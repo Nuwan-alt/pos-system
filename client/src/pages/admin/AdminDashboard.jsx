@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   LogOut, DollarSign, BarChart2, Users, Package,
-  UserCog, Clock, Settings,
+  UserCog, Clock, Settings, History,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { apiFetch } from '../../lib/api'
@@ -18,8 +18,9 @@ const QUICK_ACTIONS = [
   { icon: UserCog,  title: 'Manage Users',      subtitle: 'Create and manage cashier accounts',    route: '/admin/users' },
   { icon: Package,  title: 'Manage Inventory',  subtitle: 'Add products and track stock',          route: '/admin/inventory' },
   { icon: Clock,    title: 'Approve Deletions', subtitle: 'Review transaction deletion requests',  route: '/admin/deletions' },
-  { icon: BarChart2, title: 'View Reports',     subtitle: 'Sales summaries and analytics',         route: '/admin/reports' },
-  { icon: Settings, title: 'System Settings',   subtitle: 'Configure system preferences',          route: '/admin/settings' },
+  { icon: BarChart2, title: 'View Reports',          subtitle: 'Sales summaries and analytics',         route: '/admin/reports' },
+  { icon: History,  title: 'Stock Update History', subtitle: 'View who updated stock and when',       route: '/admin/stock-history' },
+  { icon: Settings, title: 'System Settings',      subtitle: 'Configure system preferences',          route: '/admin/settings' },
 ]
 
 export default function AdminDashboard() {

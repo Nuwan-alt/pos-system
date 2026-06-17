@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, ShoppingCart, DollarSign, TrendingUp, Search } from 'lucide-react'
+import { ArrowLeft, ShoppingCart, DollarSign, TrendingUp, Search, Calendar, X } from 'lucide-react'
 import { apiFetch } from '../../lib/api'
+import DatePickerCalendar from '../../components/DatePickerCalendar'
 
 const PERIODS = [
   { key: 'today',     label: 'Today' },
@@ -14,17 +15,61 @@ const PERIODS = [
 export default function TransactionReports() {
   const navigate = useNavigate()
   const [selectedPeriod, setSelectedPeriod] = useState('today')
+  const [selectedDate,   setSelectedDate]   = useState(null)
+  const [calendarOpen,   setCalendarOpen]   = useState(false)
   const [searchQuery,    setSearchQuery]    = useState('')
   const [report,         setReport]         = useState(null)
   const [loading,        setLoading]        = useState(true)
 
+  const calendarRef = useRef(null)
+
+  // Close calendar on outside click
   useEffect(() => {
+    function handleClickOutside(e) {
+      if (calendarRef.current && !calendarRef.current.contains(e.target)) {
+        setCalendarOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Re-fetch when period or date changes
+  useEffect(() => {
+    // Don't fire if specificDate is selected but no date is set yet
+    if (selectedPeriod === 'specificDate' && !selectedDate) return
+
     setLoading(true)
-    apiFetch(`/api/reports?period=${selectedPeriod}`)
+    const params = new URLSearchParams({ period: selectedPeriod })
+    if (selectedPeriod === 'specificDate' && selectedDate) {
+      const yyyy = selectedDate.getFullYear()
+      const mm   = String(selectedDate.getMonth() + 1).padStart(2, '0')
+      const dd   = String(selectedDate.getDate()).padStart(2, '0')
+      params.set('date', `${yyyy}-${mm}-${dd}`)
+    }
+    apiFetch(`/api/reports?${params}`)
       .then(data => setReport(data))
       .catch(() => setReport(null))
       .finally(() => setLoading(false))
-  }, [selectedPeriod])
+  }, [selectedPeriod, selectedDate])
+
+  function handlePeriodClick(key) {
+    setSelectedPeriod(key)
+    setSelectedDate(null)
+    setCalendarOpen(false)
+  }
+
+  function handleDateSelect(date) {
+    setSelectedDate(date)
+    setSelectedPeriod('specificDate')
+    setCalendarOpen(false)
+  }
+
+  function handleDateClear() {
+    setSelectedDate(null)
+    setSelectedPeriod('today')
+    setCalendarOpen(false)
+  }
 
   const productRows = useMemo(() => {
     if (!report) return []
@@ -61,11 +106,13 @@ export default function TransactionReports() {
           {/* ── SECTION 1 — Period selector ─────────────────────────── */}
           <div className="border border-gray-200 rounded-xl p-5">
             <p className="font-bold text-gray-900 mb-4">Select Period</p>
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex gap-2 flex-wrap items-center">
+
+              {/* Fixed period buttons */}
               {PERIODS.map(p => (
                 <button
                   key={p.key}
-                  onClick={() => setSelectedPeriod(p.key)}
+                  onClick={() => handlePeriodClick(p.key)}
                   style={{ transition: 'background-color 0.15s, color 0.15s' }}
                   className={`px-4 py-2 rounded-lg text-sm font-medium ${
                     selectedPeriod === p.key
@@ -76,6 +123,37 @@ export default function TransactionReports() {
                   {p.label}
                 </button>
               ))}
+
+              {/* Date picker button */}
+              <div className="relative" ref={calendarRef}>
+                <button
+                  onClick={() => setCalendarOpen(o => !o)}
+                  style={{ transition: 'background-color 0.15s, color 0.15s' }}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${
+                    selectedPeriod === 'specificDate'
+                      ? 'bg-[#111827] text-white'
+                      : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  <Calendar className="w-4 h-4 shrink-0" />
+                  <span>
+                    {selectedPeriod === 'specificDate' && selectedDate
+                      ? selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                      : 'Pick a Date'
+                    }
+                  </span>
+                  {selectedPeriod === 'specificDate' && selectedDate && (
+                    <X
+                      className="w-3.5 h-3.5 shrink-0 opacity-80 hover:opacity-100 cursor-pointer"
+                      onClick={e => { e.stopPropagation(); handleDateClear() }}
+                    />
+                  )}
+                </button>
+                {calendarOpen && (
+                  <DatePickerCalendar selectedDate={selectedDate} onDateSelect={handleDateSelect} />
+                )}
+              </div>
+
             </div>
           </div>
 

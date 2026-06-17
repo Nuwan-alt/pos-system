@@ -55,7 +55,7 @@ router.post('/', async (req, res) => {
   }
 })
 
-// PUT /api/products/:id — update product
+// PUT /api/products/:id — update product (logs stock changes to stock_updates)
 router.put('/:id', async (req, res) => {
   const { name, price, discount = 0, stock = 0, minThreshold = 0 } = req.body
   if (!name || !name.trim()) {
@@ -64,18 +64,48 @@ router.put('/:id', async (req, res) => {
   if (!price || parseFloat(price) <= 0) {
     return res.status(400).json({ error: 'Price must be greater than 0.' })
   }
+
+  const newStock = parseInt(stock, 10) || 0
+
+  const conn = await db.getConnection()
   try {
-    const [result] = await db.query(
-      'UPDATE products SET name = ?, price = ?, discount = ?, stock = ?, min_threshold = ? WHERE id = ? AND is_deleted = 0',
-      [name.trim(), parseFloat(price), parseFloat(discount), parseInt(stock), parseInt(minThreshold), req.params.id]
+    await conn.beginTransaction()
+
+    // Lock the row so concurrent requests can't race between read and write
+    const [rows] = await conn.query(
+      'SELECT stock FROM products WHERE id = ? AND is_deleted = 0 FOR UPDATE',
+      [req.params.id]
     )
-    if (result.affectedRows === 0) {
+    if (rows.length === 0) {
+      await conn.rollback()
       return res.status(404).json({ error: 'Product not found.' })
     }
+
+    const stockDiff = newStock - rows[0].stock
+
+    await conn.query(
+      'UPDATE products SET name = ?, price = ?, discount = ?, stock = ?, min_threshold = ? WHERE id = ? AND is_deleted = 0',
+      [name.trim(), parseFloat(price), parseFloat(discount), newStock, parseInt(minThreshold, 10) || 0, req.params.id]
+    )
+
+    if (stockDiff !== 0) {
+      const note = stockDiff > 0
+        ? `Admin increased stock by ${stockDiff} units`
+        : `Admin decreased stock by ${Math.abs(stockDiff)} units`
+      await conn.query(
+        "INSERT INTO stock_updates (product_id, updated_by_id, updated_by_role, quantity_added, note) VALUES (?, 1, 'admin', ?, ?)",
+        [req.params.id, stockDiff, note]
+      )
+    }
+
+    await conn.commit()
     res.json({ success: true })
   } catch (err) {
+    await conn.rollback()
     console.error('PUT /products/:id error:', err)
     res.status(500).json({ error: 'Server error.' })
+  } finally {
+    conn.release()
   }
 })
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, Receipt, Search, ShoppingCart, User, Trash2 } from 'lucide-react'
+import { LogOut, Receipt, Search, ShoppingCart, User, Trash2, PackagePlus } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { apiFetch } from '../../lib/api'
 
@@ -118,6 +118,13 @@ export default function CashierTerminal() {
           <p className="text-sm text-gray-500">Point of Sale System</p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate('/cashier/update-stock')}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
+          >
+            <PackagePlus className="w-4 h-4" />
+            Update Stock
+          </button>
           <button
             onClick={() => navigate('/cashier/transactions')}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-gray-900 hover:bg-gray-700 transition-colors"

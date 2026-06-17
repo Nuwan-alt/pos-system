@@ -10,6 +10,7 @@ const deletionRequestRoutes = require('./routes/deletionRequests')
 const settingsRoutes        = require('./routes/settings')
 const dashboardRoutes       = require('./routes/dashboard')
 const reportsRoutes         = require('./routes/reports')
+const stockRoutes           = require('./routes/stock')
 
 const app  = express()
 const PORT = process.env.PORT || 5000
@@ -25,6 +26,7 @@ app.use('/api/deletion-requests', deletionRequestRoutes)
 app.use('/api/settings',          settingsRoutes)
 app.use('/api/dashboard',         dashboardRoutes)
 app.use('/api/reports',           reportsRoutes)
+app.use('/api/stock',             stockRoutes)
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }))
 

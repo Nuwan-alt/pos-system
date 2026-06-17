@@ -1,5 +1,6 @@
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
+import { POSProvider } from './context/POSContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import RoleSelection from './pages/RoleSelection'
 import Login from './pages/Login'
@@ -9,8 +10,10 @@ import SystemSettings from './pages/admin/SystemSettings'
 import ApproveDeletions from './pages/admin/ApproveDeletions'
 import ManageInventory from './pages/admin/ManageInventory'
 import TransactionReports from './pages/admin/TransactionReports'
+import StockUpdateHistory from './pages/admin/StockUpdateHistory'
 import CashierTerminal from './pages/cashier/CashierTerminal'
 import CashierTransactions from './pages/cashier/CashierTransactions'
+import UpdateStock from './pages/cashier/UpdateStock'
 
 const router = createBrowserRouter([
   { path: '/',               element: <RoleSelection /> },
@@ -22,17 +25,21 @@ const router = createBrowserRouter([
   { path: '/admin/inventory', element: <ProtectedRoute role="admin"><ManageInventory /></ProtectedRoute> },
   { path: '/admin/deletions', element: <ProtectedRoute role="admin"><ApproveDeletions /></ProtectedRoute> },
   { path: '/admin/reports',   element: <ProtectedRoute role="admin"><TransactionReports /></ProtectedRoute> },
-  { path: '/admin/settings',  element: <ProtectedRoute role="admin"><SystemSettings /></ProtectedRoute> },
+  { path: '/admin/settings',      element: <ProtectedRoute role="admin"><SystemSettings /></ProtectedRoute> },
+  { path: '/admin/stock-history', element: <ProtectedRoute role="admin"><StockUpdateHistory /></ProtectedRoute> },
 
   // Cashier routes
   { path: '/cashier/dashboard',     element: <ProtectedRoute role="cashier"><CashierTerminal /></ProtectedRoute> },
   { path: '/cashier/transactions',  element: <ProtectedRoute role="cashier"><CashierTransactions /></ProtectedRoute> },
+  { path: '/cashier/update-stock',  element: <ProtectedRoute role="cashier"><UpdateStock /></ProtectedRoute> },
 ])
 
 export default function App() {
   return (
     <AuthProvider>
-      <RouterProvider router={router} />
+      <POSProvider>
+        <RouterProvider router={router} />
+      </POSProvider>
     </AuthProvider>
   )
 }

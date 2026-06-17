@@ -5,38 +5,44 @@ import { apiFetch } from '../../lib/api'
 
 export default function CashierTransactions() {
   const navigate = useNavigate()
-  const [transactions, setTransactions] = useState([])
-  const [loading,      setLoading]      = useState(true)
-
-  const pending = transactions.filter(t => t.deletionStatus === 'pending')
+  const [completedTransactions, setCompletedTransactions] = useState([])
+  const [pendingDeletions,      setPendingDeletions]      = useState([])
+  const [loading,               setLoading]               = useState(true)
 
   useEffect(() => {
     apiFetch('/api/transactions')
-      .then(data => setTransactions(data))
+      .then(data => {
+        setCompletedTransactions(data.filter(t => t.deletionStatus !== 'pending'))
+        setPendingDeletions(data.filter(t => t.deletionStatus === 'pending'))
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
 
-  async function requestDeletion(txn) {
+  async function handleDeleteRequest(txn) {
     try {
       const { deletionRequestId } = await apiFetch('/api/deletion-requests', {
         method: 'POST',
         body: JSON.stringify({ transactionId: txn.id }),
       })
-      setTransactions(prev => prev.map(t =>
-        t.id === txn.id ? { ...t, deletionStatus: 'pending', deletionRequestId } : t
-      ))
+      setCompletedTransactions(prev => prev.filter(t => t.id !== txn.id))
+      setPendingDeletions(prev => {
+        if (prev.find(p => p.id === txn.id)) return prev
+        return [...prev, { ...txn, deletionRequestId, deletionStatus: 'pending' }]
+      })
     } catch (err) {
       alert(err.message)
     }
   }
 
-  async function revertDeletion(txn) {
+  async function handleRevert(txnId) {
+    const txn = pendingDeletions.find(p => p.id === txnId)
+    if (!txn) return
     try {
       await apiFetch(`/api/deletion-requests/${txn.deletionRequestId}`, { method: 'DELETE' })
-      setTransactions(prev => prev.map(t =>
-        t.id === txn.id ? { ...t, deletionStatus: null, deletionRequestId: null } : t
-      ))
+      setPendingDeletions(prev => prev.filter(p => p.id !== txnId))
+      const { deletionStatus, deletionRequestId, ...originalTxn } = txn
+      setCompletedTransactions(prev => [...prev, originalTxn])
     } catch (err) {
       alert(err.message)
     }
@@ -72,34 +78,29 @@ export default function CashierTransactions() {
               <Receipt className="w-5 h-5 text-gray-700" />
               <h2 className="font-bold text-gray-900">Completed Transactions</h2>
             </div>
-            <span className="text-sm text-gray-500">{transactions.length} transactions</span>
+            <span className="text-sm text-gray-500">{completedTransactions.length} transactions</span>
           </div>
 
           {loading ? (
             <div className="flex items-center justify-center h-32">
               <p className="text-sm text-gray-400">Loading…</p>
             </div>
-          ) : transactions.length === 0 ? (
+          ) : completedTransactions.length === 0 ? (
             <div className="flex items-center justify-center h-32">
               <p className="text-sm text-gray-400">No transactions today</p>
             </div>
           ) : (
             <div className="space-y-4">
-              {transactions.map(txn => (
+              {completedTransactions.map(txn => (
                 <div key={txn.id} className="bg-white border border-gray-200 rounded-xl p-4">
 
                   {/* Ref + trash button */}
                   <div className="flex items-center justify-between mb-1">
                     <span className="font-bold text-gray-900 text-sm">{txn.transactionRef}</span>
                     <button
-                      onClick={() => txn.deletionStatus !== 'pending' && requestDeletion(txn)}
-                      disabled={txn.deletionStatus === 'pending'}
-                      title={txn.deletionStatus === 'pending' ? 'Deletion requested' : 'Request deletion'}
-                      className={`p-1.5 rounded-lg border transition-colors ${
-                        txn.deletionStatus === 'pending'
-                          ? 'bg-red-500 border-red-500 text-white cursor-not-allowed pointer-events-none'
-                          : 'border-gray-300 bg-white text-gray-500 hover:bg-red-500 hover:border-red-500 hover:text-white'
-                      }`}
+                      onClick={() => handleDeleteRequest(txn)}
+                      title="Request deletion"
+                      className="p-1.5 rounded-lg border border-gray-300 bg-white text-gray-500 hover:bg-red-500 hover:border-red-500 hover:text-white transition-colors"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -133,25 +134,25 @@ export default function CashierTransactions() {
               <AlertCircle className="w-5 h-5 text-amber-500" />
               <h2 className="font-bold text-gray-900">Pending Deletion Requests</h2>
             </div>
-            <span className="text-sm text-gray-500">{pending.length} pending</span>
+            <span className="text-sm text-gray-500">{pendingDeletions.length} pending</span>
           </div>
 
-          {pending.length === 0 ? (
+          {pendingDeletions.length === 0 ? (
             <div className="flex items-center justify-center h-32">
               <p className="text-sm text-gray-400">No pending requests</p>
             </div>
           ) : (
             <div className="space-y-4">
-              {pending.map(txn => (
+              {pendingDeletions.map(txn => (
                 <div key={txn.id} className="bg-[#fefce8] border border-amber-400 rounded-xl p-4">
 
                   {/* Ref + revert button */}
                   <div className="flex items-center justify-between mb-1">
                     <p className="font-bold text-gray-900 text-sm">{txn.transactionRef}</p>
                     <button
-                      onClick={() => revertDeletion(txn)}
+                      onClick={() => handleRevert(txn.id)}
                       title="Cancel deletion request"
-                      className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-amber-700 border border-amber-400 bg-white hover:bg-amber-50 rounded-lg transition-colors"
+                      className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-gray-700 border border-gray-200 bg-white hover:bg-gray-50 rounded-lg transition-colors"
                     >
                       <Undo2 className="w-3.5 h-3.5" />
                       Revert
