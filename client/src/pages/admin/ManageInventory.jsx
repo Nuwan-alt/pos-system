@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Plus, Pencil, Search, Trash2, Lock, X } from 'lucide-react'
+import { ArrowLeft, Plus, Pencil, Search, Trash2, Lock, X, PackagePlus } from 'lucide-react'
 import { apiFetch } from '../../lib/api'
 
-const EMPTY_FORM = { name: '', price: '', discount: '0', stock: '', minThreshold: '' }
+const EMPTY_FORM = { name: '', price: '', discount: '0', minThreshold: '' }
 
 export default function ManageInventory() {
   const navigate = useNavigate()
@@ -16,9 +16,16 @@ export default function ManageInventory() {
   const [formError,   setFormError]   = useState('')
   const [successMsg,  setSuccessMsg]  = useState('')
   const [submitting,  setSubmitting]  = useState(false)
-  const [deleteModal, setDeleteModal] = useState({ open: false, productId: null, productName: '' })
-  const [password,    setPassword]    = useState('')
-  const [pwError,     setPwError]     = useState('')
+  const [deleteModal,  setDeleteModal]  = useState({ open: false, productId: null, productName: '' })
+  const [password,     setPassword]     = useState('')
+  const [pwError,      setPwError]      = useState('')
+  const [stockModal,   setStockModal]   = useState({ open: false, product: null })
+  const [stockOp,      setStockOp]      = useState('add')
+  const [stockQty,     setStockQty]     = useState('')
+  const [stockNote,    setStockNote]    = useState('')
+  const [stockErr,     setStockErr]     = useState('')
+  const [stockBusy,    setStockBusy]    = useState(false)
+  const [stockSuccess, setStockSuccess] = useState(null)
 
   useEffect(() => {
     apiFetch('/api/products')
@@ -46,9 +53,8 @@ export default function ManageInventory() {
   }
 
   function validate() {
-    if (!form.name.trim())                                          { setFormError('Product name is required.'); return false }
+    if (!form.name.trim())                                             { setFormError('Product name is required.'); return false }
     if (isNaN(parseFloat(form.price)) || parseFloat(form.price) <= 0) { setFormError('Price must be greater than 0.'); return false }
-    if (parseFloat(form.stock) < 0 || isNaN(parseFloat(form.stock)))  { setFormError('Stock cannot be negative.'); return false }
     if (parseFloat(form.minThreshold) < 0 || isNaN(parseFloat(form.minThreshold))) { setFormError('Threshold cannot be negative.'); return false }
     return true
   }
@@ -58,7 +64,6 @@ export default function ManageInventory() {
       name:         form.name.trim(),
       price:        parseFloat(form.price),
       discount:     parseFloat(form.discount) || 0,
-      stock:        parseInt(form.stock, 10)   || 0,
       minThreshold: parseInt(form.minThreshold, 10) || 0,
     }
   }
@@ -91,7 +96,7 @@ export default function ManageInventory() {
         body: JSON.stringify(buildPayload()),
       })
       setProducts(prev =>
-        prev.map(p => p.id === editingId ? { id: editingId, ...buildPayload() } : p)
+        prev.map(p => p.id === editingId ? { ...p, ...buildPayload() } : p)
             .sort((a, b) => a.name.localeCompare(b.name))
       )
       setEditingId(null)
@@ -109,11 +114,53 @@ export default function ManageInventory() {
       name:         product.name,
       price:        String(product.price),
       discount:     String(product.discount),
-      stock:        String(product.stock),
       minThreshold: String(product.minThreshold),
     })
     setFormError('')
     setSuccessMsg('')
+  }
+
+  function openStockModal(product) {
+    setStockModal({ open: true, product })
+    setStockOp('add')
+    setStockQty('')
+    setStockNote('')
+    setStockErr('')
+  }
+
+  function closeStockModal() {
+    setStockModal({ open: false, product: null })
+    setStockErr('')
+    setStockBusy(false)
+  }
+
+  async function handleStockAdjust() {
+    const qty = parseInt(stockQty, 10)
+    if (!qty || qty <= 0) return
+    if (stockOp === 'remove' && qty > stockModal.product.stock) return
+    setStockBusy(true)
+    setStockErr('')
+    try {
+      const result = await apiFetch('/api/stock/adjust', {
+        method: 'POST',
+        body: JSON.stringify({
+          product_id: stockModal.product.id,
+          operation:  stockOp,
+          quantity:   qty,
+          note:       stockNote.trim() || null,
+        }),
+      })
+      setProducts(prev =>
+        prev.map(p => p.id === stockModal.product.id ? { ...p, stock: result.new_stock } : p)
+      )
+      setStockSuccess(stockModal.product.id)
+      setTimeout(() => setStockSuccess(null), 2000)
+      closeStockModal()
+    } catch (err) {
+      setStockErr(err.message)
+    } finally {
+      setStockBusy(false)
+    }
   }
 
   function cancelEdit() {
@@ -149,6 +196,12 @@ export default function ManageInventory() {
       setSubmitting(false)
     }
   }
+
+  const previewQty   = parseInt(stockQty, 10) || 0
+  const currentStk   = stockModal.product?.stock ?? 0
+  const previewStock = stockOp === 'add' ? currentStk + previewQty : currentStk - previewQty
+  const isOverRemove = stockOp === 'remove' && previewQty > currentStk
+  const canConfirm   = previewQty > 0 && !isOverRemove && !stockBusy
 
   return (
     <div className="h-screen flex flex-col bg-white">
@@ -198,13 +251,6 @@ export default function ManageInventory() {
                 onChange={e => patch({ discount: e.target.value })}
                 className="w-full bg-gray-100 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-gray-300 no-spinner" />
               <p className="text-xs text-gray-400 mt-1">Final Price: Rs. {finalPrice()}</p>
-            </div>
-
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Stock Amount</label>
-              <input type="number" min="0" placeholder="0" value={form.stock}
-                onChange={e => patch({ stock: e.target.value })}
-                className="w-full bg-gray-100 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-gray-300 no-spinner" />
             </div>
 
             <div className="mb-5">
@@ -276,7 +322,7 @@ export default function ManageInventory() {
               </div>
             </div>
 
-            <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_80px] gap-3 px-5 py-2 text-xs font-semibold text-gray-500 shrink-0 border-b border-gray-100">
+            <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_100px] gap-3 px-5 py-2 text-xs font-semibold text-gray-500 shrink-0 border-b border-gray-100">
               <span>Product Name</span>
               <span>Price</span>
               <span>Discount</span>
@@ -301,7 +347,7 @@ export default function ManageInventory() {
                   const fp        = (product.price * (1 - product.discount / 100)).toFixed(2)
                   return (
                     <div key={product.id}
-                      className={`grid grid-cols-[2fr_1fr_1fr_1fr_1fr_80px] gap-3 px-5 py-3 items-center border-b border-gray-50 text-sm ${
+                      className={`grid grid-cols-[2fr_1fr_1fr_1fr_1fr_100px] gap-3 px-5 py-3 items-center border-b border-gray-50 text-sm ${
                         isEditing ? 'bg-gray-100' : isLow ? 'bg-[#fff5f5]' : 'bg-white'
                       }`}>
                       <span className="font-semibold text-gray-900 truncate">{product.name}</span>
@@ -310,18 +356,28 @@ export default function ManageInventory() {
                       <span className="font-bold text-gray-900">Rs. {fp}</span>
                       <span className={`font-semibold ${isLow ? 'text-red-600' : 'text-gray-600'}`}>
                         {product.stock} units
+                        {stockSuccess === product.id && (
+                          <span className="ml-1.5 text-green-600 text-xs font-bold">✓</span>
+                        )}
                       </span>
                       <div className="flex items-center gap-1.5 justify-end">
+                        <button onClick={() => openStockModal(product)}
+                          className="p-1.5 rounded-lg border border-gray-200 bg-white text-gray-400 hover:bg-green-600 hover:border-green-600 hover:text-white transition-colors"
+                          title="Update stock">
+                          <PackagePlus className="w-3.5 h-3.5" />
+                        </button>
                         <button onClick={() => startEdit(product)}
                           className={`p-1.5 rounded-lg border transition-colors ${
                             isEditing
                               ? 'bg-gray-900 border-gray-900 text-white'
                               : 'bg-white border-gray-200 text-gray-500 hover:bg-blue-700 hover:border-blue-700 hover:text-white'
-                          }`}>
+                          }`}
+                          title="Edit product">
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
                         <button onClick={() => openDelete(product)}
-                          className="p-1.5 rounded-lg border border-gray-200 bg-white text-gray-400 hover:bg-red-500 hover:border-red-500 hover:text-white transition-colors">
+                          className="p-1.5 rounded-lg border border-gray-200 bg-white text-gray-400 hover:bg-red-500 hover:border-red-500 hover:text-white transition-colors"
+                          title="Delete product">
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
@@ -333,6 +389,113 @@ export default function ManageInventory() {
           </div>
         </div>
       </div>
+
+      {/* ── STOCK UPDATE MODAL ───────────────────────────────────── */}
+      {stockModal.open && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-xl shadow-lg w-full max-w-[420px] p-6">
+
+            <div className="flex items-start justify-between mb-5">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+                  <PackagePlus className="w-4 h-4 text-green-600" />
+                </div>
+                <div>
+                  <p className="font-bold text-gray-900">Update Stock</p>
+                  <p className="text-sm text-gray-500">{stockModal.product?.name}</p>
+                </div>
+              </div>
+              <button onClick={closeStockModal} className="text-gray-400 hover:text-gray-700 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3 mb-5">
+              <span className="text-sm text-gray-600">Current Stock</span>
+              <span className="font-bold text-gray-900">{stockModal.product?.stock} units</span>
+            </div>
+
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => setStockOp('add')}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${
+                  stockOp === 'add'
+                    ? 'bg-green-600 text-white'
+                    : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                Add Stock
+              </button>
+              <button
+                onClick={() => setStockOp('remove')}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${
+                  stockOp === 'remove'
+                    ? 'bg-red-600 text-white'
+                    : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                Remove Stock
+              </button>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {stockOp === 'add' ? 'Quantity to Add' : 'Quantity to Remove'}
+              </label>
+              <input
+                type="number"
+                min="1"
+                placeholder="Enter quantity"
+                value={stockQty}
+                onChange={e => setStockQty(e.target.value)}
+                className="w-full bg-gray-100 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-gray-300 no-spinner"
+              />
+              {previewQty > 0 && (
+                isOverRemove ? (
+                  <p className="text-xs text-red-600 mt-1.5 font-medium">
+                    Cannot remove more than current stock ({currentStk} units)
+                  </p>
+                ) : (
+                  <p className={`text-xs mt-1.5 font-medium ${stockOp === 'add' ? 'text-green-600' : 'text-red-600'}`}>
+                    New stock will be: {previewStock} units
+                  </p>
+                )
+              )}
+            </div>
+
+            <div className="mb-5">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Note (optional)</label>
+              <input
+                type="text"
+                placeholder="e.g. Received new delivery"
+                value={stockNote}
+                onChange={e => setStockNote(e.target.value)}
+                className="w-full bg-gray-100 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-gray-300"
+              />
+            </div>
+
+            {stockErr && <p className="text-red-500 text-xs mb-3">{stockErr}</p>}
+
+            <div className="flex gap-3">
+              <button
+                onClick={closeStockModal}
+                className="flex-1 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleStockAdjust}
+                disabled={!canConfirm}
+                className={`flex-1 py-2.5 rounded-lg text-sm font-bold text-white transition-colors disabled:opacity-50 ${
+                  stockOp === 'add' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
+                }`}
+              >
+                {stockBusy ? 'Updating…' : 'Confirm Update'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── DELETE MODAL ─────────────────────────────────────────── */}
       {deleteModal.open && (
