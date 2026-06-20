@@ -250,49 +250,74 @@ export default function CashierTerminal() {
           {/* Product grid — scrollable */}
           <div className="grid grid-cols-3 gap-4 overflow-y-auto flex-1 content-start">
             {filteredProducts.map(product => (
-              <button
+              <div
                 key={product.id}
                 onClick={() => addToCart(product)}
-                className="bg-white border border-gray-400 rounded-xl p-4 text-left hover:bg-gray-200 hover:shadow-lg transition-all"
+                style={{
+                  border: product.stock === 0 ? '1px solid #fecaca' : '1px solid #e5e7eb',
+                  borderTop: `2px solid ${
+                    product.stock === 0
+                      ? '#ef4444'
+                      : product.stock < product.minThreshold
+                        ? '#f59e0b'
+                        : '#22c55e'
+                  }`,
+                  borderRadius: '12px',
+                  backgroundColor: product.stock === 0 ? '#fff5f5' : 'white',
+                  padding: '14px',
+                  cursor: product.stock === 0 ? 'not-allowed' : 'pointer',
+                  opacity: product.stock === 0 ? 0.85 : 1,
+                  transition: 'box-shadow 0.15s ease',
+                }}
+                onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)'}
+                onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
               >
-                <div className="flex items-start justify-between gap-1">
-                  <p className="font-bold text-gray-900 text-lg leading-snug">{product.name}</p>
-                  {product.discount && (
-                    <span className="shrink-0 text-xs font-bold text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded-full">
+                {/* Top row: name + discount badge */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+                  <span style={{ fontWeight: '700', fontSize: '15px', color: '#111827' }}>{product.name}</span>
+                  {product.discount > 0 && (
+                    <span style={{ backgroundColor: '#dbeafe', color: '#3b82f6', fontSize: '11px', fontWeight: '700', padding: '2px 7px', borderRadius: '9999px', flexShrink: 0, marginLeft: '6px' }}>
                       {product.discount}% OFF
                     </span>
                   )}
                 </div>
-                <div className="mt-2 flex items-center gap-2">
-                  {product.discount && (
-                    <span className="text-xs text-gray-400 line-through">
+
+                {/* Price row */}
+                <div style={{ marginBottom: '4px' }}>
+                  {product.discount > 0 && (
+                    <span style={{ fontSize: '12px', color: '#9ca3af', textDecoration: 'line-through', marginRight: '6px' }}>
                       Rs. {product.price.toFixed(2)}
                     </span>
                   )}
-                  <span className="inline-block bg-emerald-50 text-emerald-700 border border-emerald-200 text-sm font-semibold px-2.5 py-0.5 rounded-full">
+                  <span style={{ fontSize: '20px', fontWeight: '700', color: '#111827' }}>
                     Rs. {product.discount
                       ? (product.price * (1 - product.discount / 100)).toFixed(2)
                       : product.price.toFixed(2)}
                   </span>
                 </div>
-                <hr className="my-2 border-gray-100" />
-                {product.stock === 0 ? (
-                  <span className="inline-flex items-center gap-1 bg-red-50 text-red-600 border border-red-200 text-xs font-semibold px-2 py-0.5 rounded-full">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block"></span>
-                    Out of stock
-                  </span>
-                ) : product.stock < product.minThreshold ? (
-                  <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-200 text-xs font-semibold px-2 py-0.5 rounded-full">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block"></span>
-                    {product.stock} — Low Stock
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 bg-gray-100 text-gray-500 border border-gray-200 text-xs font-semibold px-2 py-0.5 rounded-full">
-                    <span className="w-1.5 h-1.5 rounded-full bg-gray-400 inline-block"></span>
-                    {product.stock} in stock
-                  </span>
-                )}
-              </button>
+
+                {/* Bottom row: stock badge right-aligned */}
+                <div style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '8px' }}>
+                  {product.stock === 0 ? (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '9999px', padding: '3px 10px' }}>
+                      <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#ef4444', flexShrink: 0, display: 'inline-block' }} />
+                      <span style={{ fontSize: '13px', fontWeight: '700', color: '#dc2626' }}>Out of stock</span>
+                    </div>
+                  ) : product.stock < product.minThreshold ? (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#fefce8', border: '1px solid #fde68a', borderRadius: '9999px', padding: '3px 10px' }}>
+                      <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#f59e0b', flexShrink: 0, display: 'inline-block' }} />
+                      <span style={{ fontSize: '13px', fontWeight: '700', color: '#d97706' }}>{product.stock}</span>
+                      <span style={{ fontSize: '12px', color: '#d97706' }}>— Low Stock</span>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '9999px', padding: '3px 10px' }}>
+                      <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#22c55e', flexShrink: 0, display: 'inline-block' }} />
+                      <span style={{ fontSize: '13px', fontWeight: '700', color: '#16a34a' }}>{product.stock}</span>
+                      <span style={{ fontSize: '12px', color: '#16a34a' }}>in stock</span>
+                    </div>
+                  )}
+                </div>
+              </div>
             ))}
             {filteredProducts.length === 0 && (
               <p className="col-span-3 text-sm text-gray-400 text-center py-8">No products found.</p>
