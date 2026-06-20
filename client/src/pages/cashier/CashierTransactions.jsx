@@ -9,7 +9,7 @@ export default function CashierTransactions() {
   const [pendingDeletions,      setPendingDeletions]      = useState([])
   const [loading,               setLoading]               = useState(true)
 
-  useEffect(() => {
+  function fetchTransactions() {
     apiFetch('/api/transactions')
       .then(data => {
         setCompletedTransactions(data.filter(t => t.deletionStatus !== 'pending'))
@@ -17,6 +17,12 @@ export default function CashierTransactions() {
       })
       .catch(() => {})
       .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    fetchTransactions()
+    window.addEventListener('focus', fetchTransactions)
+    return () => window.removeEventListener('focus', fetchTransactions)
   }, [])
 
   async function handleDeleteRequest(txn) {
@@ -91,8 +97,8 @@ export default function CashierTransactions() {
             </div>
           ) : (
             <div className="space-y-4">
-              {completedTransactions.map(txn => (
-                <div key={txn.id} className="bg-white border border-gray-200 rounded-xl p-4">
+              {completedTransactions.map((txn, index) => (
+                <div key={txn.id} style={{ backgroundColor: index % 2 === 0 ? '#f3f4f6' : '#e5e7eb', border: '1px solid #e5e7eb', borderLeft: '4px solid #3b82f6', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
 
                   {/* Ref + trash button */}
                   <div className="flex items-center justify-between mb-1">
@@ -106,7 +112,9 @@ export default function CashierTransactions() {
                     </button>
                   </div>
 
-                  <p className="text-xs text-gray-500 mb-3">{txn.cashierName} • {txn.time}</p>
+                  <p className="text-xs text-gray-500 mb-3">
+                    <span className="font-semibold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">{txn.cashierName}</span> • {txn.time}
+                  </p>
                   <hr className="border-gray-100 mb-3" />
 
                   {txn.items.map((item, i) => (
@@ -143,8 +151,8 @@ export default function CashierTransactions() {
             </div>
           ) : (
             <div className="space-y-4">
-              {pendingDeletions.map(txn => (
-                <div key={txn.id} className="bg-[#fefce8] border border-amber-400 rounded-xl p-4">
+              {pendingDeletions.map((txn, index) => (
+                <div key={txn.id} style={{ backgroundColor: index % 2 === 0 ? '#fef9c3' : '#fde68a', border: '1px solid #f59e0b', borderLeft: '4px solid #f59e0b', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
 
                   {/* Ref + revert button */}
                   <div className="flex items-center justify-between mb-1">
@@ -159,7 +167,9 @@ export default function CashierTransactions() {
                     </button>
                   </div>
 
-                  <p className="text-xs text-gray-500 mb-1">{txn.cashierName} • {txn.time}</p>
+                  <p className="text-xs text-gray-500 mb-1">
+                    <span className="font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">{txn.cashierName}</span> • {txn.time}
+                  </p>
                   <p className="text-xs font-medium text-amber-600 mb-3">Awaiting admin approval</p>
                   <hr className="border-amber-200 mb-3" />
 

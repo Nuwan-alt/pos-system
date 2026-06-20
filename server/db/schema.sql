@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS settings (
 CREATE TABLE IF NOT EXISTS cashiers (
   id         INT                       NOT NULL AUTO_INCREMENT,
   name       VARCHAR(100)              NOT NULL,
+  nic        VARCHAR(12)               DEFAULT NULL,
+  mobile     VARCHAR(15)               DEFAULT NULL,
   status     ENUM('active','disabled') NOT NULL DEFAULT 'disabled',
   created_at DATETIME                  NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id)
@@ -112,10 +114,10 @@ INSERT INTO settings (`key`, value) VALUES
   ('admin_password',   'admin123'),
   ('cashier_password', 'cashier123');
 
-INSERT INTO cashiers (name, status, created_at) VALUES
-  ('John Doe',     'active',   '2026-05-15 00:00:00'),
-  ('Jane Smith',   'active',   '2026-05-20 00:00:00'),
-  ('Mike Johnson', 'disabled', '2026-05-25 00:00:00');
+INSERT INTO cashiers (name, nic, mobile, status, created_at) VALUES
+  ('John Doe',     '200012345678', '0771234567', 'active',   '2026-05-15 00:00:00'),
+  ('Jane Smith',   '199556789012', '0712345678', 'active',   '2026-05-20 00:00:00'),
+  ('Mike Johnson', '981234567V',   '0751234567', 'disabled', '2026-05-25 00:00:00');
 
 INSERT INTO products (name, price, discount, stock, min_threshold) VALUES
   ('Milk 1L',              120.00,  0.00, 150, 30),

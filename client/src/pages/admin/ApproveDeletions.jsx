@@ -12,11 +12,17 @@ export default function ApproveDeletions() {
   const [pwError,    setPwError]    = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  useEffect(() => {
+  function fetchRequests() {
     apiFetch('/api/deletion-requests/pending')
       .then(data => setRequests(data))
       .catch(() => {})
       .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    fetchRequests()
+    window.addEventListener('focus', fetchRequests)
+    return () => window.removeEventListener('focus', fetchRequests)
   }, [])
 
   function openModal(action, request) {

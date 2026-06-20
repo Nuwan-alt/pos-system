@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { ShieldCheck, User } from 'lucide-react'
 import roleBg from '../images/role-selection.jpg'
+import highlandLogo from '../images/milco.png'
 
 export default function RoleSelection() {
   const navigate = useNavigate()
@@ -16,9 +17,20 @@ export default function RoleSelection() {
       {/* Content */}
       <div className="relative z-10 flex flex-col items-center w-full">
 
-      <div className="text-center mb-8">
-        <h1 className="text-4xl font-bold text-white">Point of Sale System</h1>
-        <p className="text-white/70 mt-2 text-base">Select your role to continue</p>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '40px', gap: '2px' }}>
+        <img
+          src={highlandLogo}
+          alt="Highland Logo"
+          style={{ width: '150px', height: '150px', objectFit: 'contain', borderRadius: '50%', filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.15))' }}
+        />
+        <div style={{ textAlign: 'center' }}>
+          <h1 style={{ fontSize: '28px', fontWeight: '700', color: 'white', margin: '0 0 6px 0', letterSpacing: '-0.5px' }}>
+            Highland Kottawa POS
+          </h1>
+          <p style={{ fontSize: '15px', color: 'rgba(255,255,255,0.7)', margin: 0 }}>
+            Select your role to continue
+          </p>
+        </div>
       </div>
 
       <div className="w-full max-w-[520px] space-y-4">
@@ -42,8 +54,8 @@ export default function RoleSelection() {
           <div className="w-14 h-14 rounded-full bg-gray-200 flex items-center justify-center mb-3">
             <User className="w-7 h-7 text-gray-500" />
           </div>
-          <span className="text-base font-bold text-gray-900">Cashier</span>
-          <span className="text-sm text-gray-500 mt-1">Process sales and transactions</span>
+          <span className="text-lg font-bold text-gray-900">Cashier</span>
+          <span className="text-base text-gray-500 mt-1">Process sales and transactions</span>
         </button>
       </div>
 

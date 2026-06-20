@@ -3,12 +3,22 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, UserPlus, UserX, UserCheck, Trash2, Lock, X } from 'lucide-react'
 import { apiFetch } from '../../lib/api'
 
+const validateNic    = nic    => /^([0-9]{9}[vVxX]|[0-9]{12})$/.test(nic)
+const validateMobile = mobile => /^(07[0-9]{8})$/.test(mobile)
+
 export default function ManageUsers() {
   const navigate = useNavigate()
   const [cashiers, setCashiers] = useState([])
   const [loading,  setLoading]  = useState(true)
-  const [newName,  setNewName]  = useState('')
-  const [modal,    setModal]    = useState({ open: false, action: '', cashierId: null, cashierName: '' })
+
+  const [newName,   setNewName]   = useState('')
+  const [newNic,    setNewNic]    = useState('')
+  const [newMobile, setNewMobile] = useState('')
+  const [nicError,    setNicError]    = useState('')
+  const [mobileError, setMobileError] = useState('')
+  const [createError, setCreateError] = useState('')
+
+  const [modal,         setModal]         = useState({ open: false, action: '', cashierId: null, cashierName: '', cashierNic: '', cashierMobile: '' })
   const [password,      setPassword]      = useState('')
   const [passwordError, setPasswordError] = useState('')
   const [submitting,    setSubmitting]    = useState(false)
@@ -17,35 +27,52 @@ export default function ManageUsers() {
   const active   = cashiers.filter(c => c.status === 'active').length
   const disabled = cashiers.filter(c => c.status === 'disabled').length
 
-  useEffect(() => {
+  function fetchCashiers() {
     apiFetch('/api/cashiers')
       .then(data => setCashiers(data))
       .catch(() => {})
       .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    fetchCashiers()
+    window.addEventListener('focus', fetchCashiers)
+    return () => window.removeEventListener('focus', fetchCashiers)
   }, [])
 
   async function createCashier() {
-    if (!newName.trim()) return
+    setCreateError('')
+    const nicValid    = validateNic(newNic.trim())
+    const mobileValid = validateMobile(newMobile.trim())
+    if (!newName.trim() || !nicValid || !mobileValid) {
+      if (!nicValid)    setNicError('Invalid NIC. Use 9 digits + V/X or 12 digits.')
+      if (!mobileValid) setMobileError('Invalid mobile. Use format 07XXXXXXXX.')
+      return
+    }
     try {
       const created = await apiFetch('/api/cashiers', {
         method: 'POST',
-        body: JSON.stringify({ name: newName.trim() }),
+        body: JSON.stringify({ name: newName.trim(), nic: newNic.trim(), mobile: newMobile.trim() }),
       })
       setCashiers(prev => [...prev, created])
-      setNewName('')
+      setNewName(''); setNewNic(''); setNewMobile('')
+      setNicError(''); setMobileError('')
     } catch (err) {
-      alert(err.message)
+      const msg = err.message || ''
+      if (msg.toLowerCase().includes('nic'))    setNicError(msg)
+      else if (msg.toLowerCase().includes('mobile')) setMobileError(msg)
+      else setCreateError(msg)
     }
   }
 
-  function openModal(action, cashierId, cashierName) {
-    setModal({ open: true, action, cashierId, cashierName })
+  function openModal(action, cashier) {
+    setModal({ open: true, action, cashierId: cashier.id, cashierName: cashier.name, cashierNic: cashier.nic, cashierMobile: cashier.mobile })
     setPassword('')
     setPasswordError('')
   }
 
   function closeModal() {
-    setModal({ open: false, action: '', cashierId: null, cashierName: '' })
+    setModal({ open: false, action: '', cashierId: null, cashierName: '', cashierNic: '', cashierMobile: '' })
     setPassword('')
     setPasswordError('')
   }
@@ -78,6 +105,7 @@ export default function ManageUsers() {
   }
 
   const actionLabel = { enable: 'enable', disable: 'disable', delete: 'delete' }[modal.action] ?? ''
+  const canCreate   = newName.trim() && newNic.trim() && newMobile.trim()
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
@@ -109,19 +137,56 @@ export default function ManageUsers() {
             <h2 className="font-bold text-gray-900">Add New Cashier</h2>
           </div>
 
-          <label className="block text-sm font-medium text-gray-700 mb-1">Cashier Name</label>
+          {/* Cashier Name */}
+          <label className="block text-sm font-bold text-gray-700 mb-1">Cashier Name</label>
           <input
             type="text"
             placeholder="Enter cashier name"
             value={newName}
             onChange={e => setNewName(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && createCashier()}
-            className="w-full bg-gray-100 rounded-lg px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-gray-300 mb-4"
+            className="w-full bg-[#f3f4f6] rounded-lg px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-gray-300 mb-4"
           />
+
+          {/* NIC Number */}
+          <label className="block text-sm font-bold text-gray-700 mb-1">NIC Number</label>
+          <input
+            type="text"
+            maxLength={12}
+            placeholder="Enter NIC number"
+            value={newNic}
+            onChange={e => { setNewNic(e.target.value); setNicError('') }}
+            onBlur={() => { if (newNic && !validateNic(newNic.trim())) setNicError('Invalid NIC. Use 9 digits + V/X or 12 digits.') }}
+            className="w-full bg-[#f3f4f6] rounded-lg px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-gray-300"
+          />
+          {nicError
+            ? <p className="text-xs text-red-500 mt-1">{nicError}</p>
+            : <p className="text-xs text-gray-400 mt-1">e.g. 200012345678 or 990123456V</p>
+          }
+
+          {/* Mobile Number */}
+          <label className="block text-sm font-bold text-gray-700 mb-1 mt-4">Mobile Number</label>
+          <input
+            type="text"
+            maxLength={10}
+            placeholder="Enter mobile number"
+            value={newMobile}
+            onChange={e => { setNewMobile(e.target.value); setMobileError('') }}
+            onBlur={() => { if (newMobile && !validateMobile(newMobile.trim())) setMobileError('Invalid mobile. Use format 07XXXXXXXX.') }}
+            className="w-full bg-[#f3f4f6] rounded-lg px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-gray-300"
+          />
+          {mobileError
+            ? <p className="text-xs text-red-500 mt-1">{mobileError}</p>
+            : <p className="text-xs text-gray-400 mt-1">e.g. 0771234567</p>
+          }
+
+          {createError && (
+            <p className="text-xs text-red-500 mt-3">{createError}</p>
+          )}
+
           <button
             onClick={createCashier}
-            disabled={!newName.trim()}
-            className="w-full flex items-center justify-center gap-2 bg-gray-900 text-white font-bold py-3 rounded-lg hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            disabled={!canCreate}
+            className="w-full flex items-center justify-center gap-2 bg-gray-900 text-white font-bold py-3 rounded-lg hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors mt-5"
           >
             <UserPlus className="w-4 h-4" />
             Create Cashier
@@ -172,13 +237,18 @@ export default function ManageUsers() {
                         <span className="text-xs font-medium bg-red-100 text-red-600 px-2.5 py-0.5 rounded-full">Disabled</span>
                       )}
                     </div>
+                    <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '2px' }}>
+                      <span style={{ color: '#374151', fontWeight: '500' }}>NIC:</span> {cashier.nic || '—'}
+                      <span style={{ margin: '0 6px', color: '#d1d5db' }}>•</span>
+                      <span style={{ color: '#374151', fontWeight: '500' }}>Mobile:</span> {cashier.mobile || '—'}
+                    </div>
                     <p className="text-xs text-gray-400 mt-0.5">Created: {cashier.createdAt}</p>
                   </div>
 
                   <div className="flex items-center gap-2">
                     {cashier.status === 'active' ? (
                       <button
-                        onClick={() => openModal('disable', cashier.id, cashier.name)}
+                        onClick={() => openModal('disable', cashier)}
                         className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-red-500 text-red-600 bg-white rounded-lg hover:bg-red-50 transition-colors"
                       >
                         <UserX className="w-4 h-4" />
@@ -186,7 +256,7 @@ export default function ManageUsers() {
                       </button>
                     ) : (
                       <button
-                        onClick={() => openModal('enable', cashier.id, cashier.name)}
+                        onClick={() => openModal('enable', cashier)}
                         className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-green-600 text-green-700 bg-white rounded-lg hover:bg-green-50 transition-colors"
                       >
                         <UserCheck className="w-4 h-4" />
@@ -194,7 +264,7 @@ export default function ManageUsers() {
                       </button>
                     )}
                     <button
-                      onClick={() => openModal('delete', cashier.id, cashier.name)}
+                      onClick={() => openModal('delete', cashier)}
                       className="p-1.5 border border-gray-200 rounded-lg text-gray-400 hover:text-red-500 hover:border-red-300 transition-colors"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -223,10 +293,21 @@ export default function ManageUsers() {
               </button>
             </div>
 
-            <p className="text-sm text-gray-600 mb-1">
-              You are about to <span className="font-bold text-gray-900">{actionLabel}</span> the cashier:
-            </p>
-            <p className="font-bold text-gray-900 mb-5">{modal.cashierName}</p>
+            {modal.action === 'create' ? (
+              <>
+                <p className="text-sm text-gray-600 mb-1">You are about to create the cashier:</p>
+                <p className="font-bold text-gray-900">{modal.cashierName}</p>
+                <p className="text-sm text-gray-500">NIC: {modal.cashierNic}</p>
+                <p className="text-sm text-gray-500 mb-5">Mobile: {modal.cashierMobile}</p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-gray-600 mb-1">
+                  You are about to <span className="font-bold text-gray-900">{actionLabel}</span> the cashier:
+                </p>
+                <p className="font-bold text-gray-900 mb-5">{modal.cashierName}</p>
+              </>
+            )}
 
             <label className="block text-sm font-medium text-gray-700 mb-1">Enter Admin Password</label>
             <input

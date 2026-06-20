@@ -12,11 +12,13 @@ function formatDate(datetime) {
 router.get('/', async (req, res) => {
   try {
     const [rows] = await db.query(
-      'SELECT id, name, status, created_at FROM cashiers ORDER BY created_at ASC'
+      'SELECT id, name, nic, mobile, status, created_at FROM cashiers ORDER BY created_at ASC'
     )
     res.json(rows.map(r => ({
       id:        r.id,
       name:      r.name,
+      nic:       r.nic,
+      mobile:    r.mobile,
       status:    r.status,
       createdAt: formatDate(r.created_at),
     })))
@@ -41,23 +43,37 @@ router.get('/active', async (req, res) => {
 
 // POST /api/cashiers — create cashier (no admin password required)
 router.post('/', async (req, res) => {
-  const { name } = req.body
-  if (!name || !name.trim()) {
+  const { name, nic, mobile } = req.body
+  if (!name || !name.trim())
     return res.status(400).json({ error: 'Cashier name is required.' })
-  }
+  if (!nic || !/^([0-9]{9}[vVxX]|[0-9]{12})$/.test(nic.trim()))
+    return res.status(400).json({ error: 'Invalid NIC. Use 9 digits + V/X or 12 digits.' })
+  if (!mobile || !/^(07[0-9]{8})$/.test(mobile.trim()))
+    return res.status(400).json({ error: 'Invalid mobile. Use format 07XXXXXXXX.' })
+
   try {
+    const [dupNic] = await db.query('SELECT id FROM cashiers WHERE nic = ?', [nic.trim()])
+    if (dupNic.length > 0)
+      return res.status(400).json({ error: 'A cashier with this NIC already exists.' })
+
+    const [dupMobile] = await db.query('SELECT id FROM cashiers WHERE mobile = ?', [mobile.trim()])
+    if (dupMobile.length > 0)
+      return res.status(400).json({ error: 'A cashier with this mobile number already exists.' })
+
     const [result] = await db.query(
-      "INSERT INTO cashiers (name, status) VALUES (?, 'disabled')",
-      [name.trim()]
+      "INSERT INTO cashiers (name, nic, mobile, status, created_at) VALUES (?, ?, ?, 'disabled', NOW())",
+      [name.trim(), nic.trim(), mobile.trim()]
     )
     const [rows] = await db.query(
-      'SELECT id, name, status, created_at FROM cashiers WHERE id = ?',
+      'SELECT id, name, nic, mobile, status, created_at FROM cashiers WHERE id = ?',
       [result.insertId]
     )
     const r = rows[0]
     res.status(201).json({
       id:        r.id,
       name:      r.name,
+      nic:       r.nic,
+      mobile:    r.mobile,
       status:    r.status,
       createdAt: formatDate(r.created_at),
     })

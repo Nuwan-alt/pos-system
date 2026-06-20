@@ -27,11 +27,17 @@ export default function ManageInventory() {
   const [stockBusy,    setStockBusy]    = useState(false)
   const [stockSuccess, setStockSuccess] = useState(null)
 
-  useEffect(() => {
+  function fetchProducts() {
     apiFetch('/api/products')
       .then(data => setProducts(data))
       .catch(() => {})
       .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    fetchProducts()
+    window.addEventListener('focus', fetchProducts)
+    return () => window.removeEventListener('focus', fetchProducts)
   }, [])
 
   const totalStock    = useMemo(() => products.reduce((s, p) => s + p.stock, 0), [products])

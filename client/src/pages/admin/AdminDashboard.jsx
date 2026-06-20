@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   LogOut, DollarSign, BarChart2, Users, Package,
-  UserCog, Clock, Settings, History,
+  UserCog, Clock, Settings, History, CreditCard,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { apiFetch } from '../../lib/api'
+import highlandLogo from '../../images/highland.png'
 
 const STAT_CONFIG = [
   { key: 'todaySales',        icon: DollarSign, iconBg: '#bfdbfe', bg: '#eff6ff', hoverBg: '#dbeafe', label: "Today's Sales",   format: v => `Rs. ${v.toLocaleString('en-US', { minimumFractionDigits: 2 })}` },
@@ -18,9 +19,10 @@ const QUICK_ACTIONS = [
   { icon: UserCog,  title: 'Manage Users',      subtitle: 'Create and manage cashier accounts',    route: '/admin/users' },
   { icon: Package,  title: 'Manage Inventory',  subtitle: 'Add products and track stock',          route: '/admin/inventory' },
   { icon: Clock,    title: 'Approve Deletions', subtitle: 'Review transaction deletion requests',  route: '/admin/deletions' },
-  { icon: BarChart2, title: 'View Reports',          subtitle: 'Sales summaries and analytics',         route: '/admin/reports' },
-  { icon: History,  title: 'Stock Update History', subtitle: 'View who updated stock and when',       route: '/admin/stock-history' },
-  { icon: Settings, title: 'System Settings',      subtitle: 'Configure system preferences',          route: '/admin/settings' },
+  { icon: BarChart2,   title: 'View Reports',          subtitle: 'Sales summaries and analytics',            route: '/admin/reports' },
+  { icon: CreditCard, title: 'Cash Drawer',           subtitle: 'Track daily opening and closing amounts',  route: '/admin/drawer' },
+  { icon: History,    title: 'Stock Update History',  subtitle: 'View who updated stock and when',          route: '/admin/stock-history' },
+  { icon: Settings,   title: 'System Settings',       subtitle: 'Configure system preferences',             route: '/admin/settings' },
 ]
 
 export default function AdminDashboard() {
@@ -29,8 +31,14 @@ export default function AdminDashboard() {
   const [stats,       setStats]       = useState(null)
   const [hoveredStat, setHoveredStat] = useState(null)
 
-  useEffect(() => {
+  function fetchStats() {
     apiFetch('/api/dashboard/stats').then(setStats).catch(() => {})
+  }
+
+  useEffect(() => {
+    fetchStats()
+    window.addEventListener('focus', fetchStats)
+    return () => window.removeEventListener('focus', fetchStats)
   }, [])
 
   return (
@@ -38,9 +46,16 @@ export default function AdminDashboard() {
 
       {/* ── HEADER ──────────────────────────────────────────────────── */}
       <header className="flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Admin Dashboard</h1>
-          <p className="text-sm text-gray-500">Point of Sale System</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <img
+            src={highlandLogo}
+            alt="Highland Logo"
+            style={{ width: '64px', height: '64px', objectFit: 'contain', borderRadius: '50%' }}
+          />
+          <div>
+            <h1 style={{ fontSize: '20px', fontWeight: '700', color: '#111827', margin: 0 }}>Admin Dashboard</h1>
+            <p style={{ fontSize: '13px', color: '#6b7280', margin: 0 }}>Highland Kottawa POS</p>
+          </div>
         </div>
         <button
           onClick={() => { logout(); navigate('/') }}
@@ -79,7 +94,7 @@ export default function AdminDashboard() {
                   </div>
                 </div>
                 <p className="text-2xl font-bold text-gray-900">{value}</p>
-                <p className="text-sm text-gray-500 mt-1">{card.label}</p>
+                <p className="text-base text-gray-500 mt-1">{card.label}</p>
               </div>
             )
           })}
@@ -108,7 +123,7 @@ export default function AdminDashboard() {
                     <Icon className="w-5 h-5 text-gray-900" />
                   </div>
                   <div>
-                    <p className="font-bold text-gray-900 text-base">{action.title}</p>
+                    <p className="font-bold text-gray-900 text-lg">{action.title}</p>
                     <p className="text-sm text-gray-500 mt-0.5">{action.subtitle}</p>
                   </div>
                 </button>

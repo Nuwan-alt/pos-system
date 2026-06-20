@@ -8,6 +8,7 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME || 'pos_db',
   waitForConnections: true,
   connectionLimit: 10,
+  timezone: '+05:30',
 })
 
 module.exports = pool.promise()

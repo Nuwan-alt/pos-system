@@ -4,6 +4,7 @@ import { Lock } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { apiFetch } from '../lib/api'
 import loginBg from '../images/login-page.jpg'
+import highlandLogo from '../images/highland.png'
 
 export default function Login() {
   const { role } = useParams()
@@ -61,18 +62,16 @@ export default function Login() {
         <div className="flex-1 flex items-center justify-center px-4">
           <div className="w-full max-w-[520px] bg-white/90 backdrop-blur-sm border border-white/30 rounded-2xl p-8">
 
-            {/* Lock icon */}
-            <div className="flex justify-center mb-5">
-              <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center">
-                <Lock className="w-7 h-7 text-gray-500" />
-              </div>
+            {/* Logo + Title */}
+            <div className="flex flex-col items-center mb-6">
+              <img
+                src={highlandLogo}
+                alt="Highland Logo"
+                style={{ width: '80px', height: '80px', objectFit: 'contain', borderRadius: '50%', filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.15))', marginBottom: '14px' }}
+              />
+              <h1 className="text-2xl font-bold text-center text-gray-900">{title}</h1>
+              <p className="text-sm text-gray-500 text-center mt-1">Highland Kottawa POS</p>
             </div>
-
-            {/* Title */}
-            <h1 className="text-2xl font-bold text-center text-gray-900">{title}</h1>
-            <p className="text-sm text-gray-500 text-center mt-1 mb-6">
-              Enter your password to continue
-            </p>
 
             {/* Password input */}
             <label className="block text-sm font-medium text-gray-700 mb-1">

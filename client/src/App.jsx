@@ -11,6 +11,7 @@ import ApproveDeletions from './pages/admin/ApproveDeletions'
 import ManageInventory from './pages/admin/ManageInventory'
 import TransactionReports from './pages/admin/TransactionReports'
 import StockUpdateHistory from './pages/admin/StockUpdateHistory'
+import CashDrawer from './pages/shared/CashDrawer'
 import CashierTerminal from './pages/cashier/CashierTerminal'
 import CashierTransactions from './pages/cashier/CashierTransactions'
 import UpdateStock from './pages/cashier/UpdateStock'
@@ -27,11 +28,13 @@ const router = createBrowserRouter([
   { path: '/admin/reports',   element: <ProtectedRoute role="admin"><TransactionReports /></ProtectedRoute> },
   { path: '/admin/settings',      element: <ProtectedRoute role="admin"><SystemSettings /></ProtectedRoute> },
   { path: '/admin/stock-history', element: <ProtectedRoute role="admin"><StockUpdateHistory /></ProtectedRoute> },
+  { path: '/admin/drawer',        element: <ProtectedRoute role="admin"><CashDrawer isAdmin={true}  backRoute="/admin/dashboard" backLabel="Back to Dashboard" /></ProtectedRoute> },
 
   // Cashier routes
   { path: '/cashier/dashboard',     element: <ProtectedRoute role="cashier"><CashierTerminal /></ProtectedRoute> },
   { path: '/cashier/transactions',  element: <ProtectedRoute role="cashier"><CashierTransactions /></ProtectedRoute> },
   { path: '/cashier/update-stock',  element: <ProtectedRoute role="cashier"><UpdateStock /></ProtectedRoute> },
+  { path: '/cashier/drawer',        element: <ProtectedRoute role="cashier"><CashDrawer isAdmin={false} backRoute="/cashier/dashboard" backLabel="Back to Cashier" /></ProtectedRoute> },
 ])
 
 export default function App() {

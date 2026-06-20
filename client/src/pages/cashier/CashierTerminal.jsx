@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, Receipt, Search, ShoppingCart, User, Trash2, PackagePlus } from 'lucide-react'
+import { LogOut, Receipt, Search, ShoppingCart, User, Trash2, PackagePlus, CreditCard, X } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { apiFetch } from '../../lib/api'
+import highlandLogo from '../../images/highland.png'
 
 export default function CashierTerminal() {
   const navigate = useNavigate()
@@ -17,9 +18,15 @@ export default function CashierTerminal() {
   const [completing,      setCompleting]      = useState(false)
   const [successMsg,      setSuccessMsg]      = useState('')
 
-  useEffect(() => {
+  function refetchAll() {
     apiFetch('/api/products').then(setProducts).catch(() => {})
     apiFetch('/api/cashiers/active').then(setCashiers).catch(() => {})
+  }
+
+  useEffect(() => {
+    refetchAll()
+    window.addEventListener('focus', refetchAll)
+    return () => window.removeEventListener('focus', refetchAll)
   }, [])
 
   const filteredProducts = products
@@ -33,6 +40,9 @@ export default function CashierTerminal() {
   const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0)
   const hasStockIssue = cart.some(item => item.qty > item.stock)
   const canComplete = cart.length > 0 && selectedCashier !== '' && !hasStockIssue
+
+  const lowStockCount   = products.filter(p => p.stock > 0 && p.stock <= p.minThreshold).length
+  const outOfStockCount = products.filter(p => p.stock === 0).length
 
   function addToCart(product) {
     if (product.stock === 0) return
@@ -113,11 +123,25 @@ export default function CashierTerminal() {
 
       {/* ── HEADER ─────────────────────────────────────────────────── */}
       <header className="flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Cashier Terminal</h1>
-          <p className="text-sm text-gray-500">Point of Sale System</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <img
+            src={highlandLogo}
+            alt="Highland Logo"
+            style={{ width: '64px', height: '64px', objectFit: 'contain', borderRadius: '50%' }}
+          />
+          <div>
+            <h1 style={{ fontSize: '20px', fontWeight: '700', color: '#111827', margin: 0 }}>Cashier Terminal</h1>
+            <p style={{ fontSize: '13px', color: '#6b7280', margin: 0 }}>Highland Kottawa POS</p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate('/cashier/drawer')}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 transition-colors"
+          >
+            <CreditCard className="w-4 h-4" />
+            Cash Drawer
+          </button>
           <button
             onClick={() => navigate('/cashier/update-stock')}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
@@ -159,31 +183,67 @@ export default function CashierTerminal() {
                   placeholder="Search..."
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  className="w-full bg-gray-100 rounded-full pl-10 pr-4 py-2 text-sm outline-none focus:ring-2 focus:ring-gray-200"
+                  className="w-full bg-gray-100 rounded-full pl-10 pr-9 py-2 text-sm outline-none focus:ring-2 focus:ring-gray-200"
                 />
+                {search && (
+                  <button
+                    onClick={() => setSearch('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <X className="w-4.5 h-4.5" />
+                  </button>
+                )}
               </div>
 
-              <button
-                onClick={() => setStockFilter(f => f === 'low' ? 'all' : 'low')}
-                className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-bold border transition-colors ${
-                  stockFilter === 'low'
-                    ? 'bg-orange-500 text-white border-orange-500'
-                    : 'bg-white text-orange-500 border-orange-500 hover:bg-orange-50'
-                }`}
-              >
-                Low Stock
-              </button>
+              <div style={{ position: 'relative', display: 'inline-block' }}>
+                <button
+                  onClick={() => setStockFilter(f => f === 'low' ? 'all' : 'low')}
+                  className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-bold border transition-colors ${
+                    stockFilter === 'low'
+                      ? 'bg-orange-500 text-white border-orange-500'
+                      : 'bg-white text-orange-500 border-orange-500 hover:bg-orange-50'
+                  }`}
+                >
+                  Low Stock
+                </button>
+                {lowStockCount > 0 && (
+                  <span style={{
+                    position: 'absolute', top: '-8px', right: '-8px',
+                    backgroundColor: '#f97316', color: 'white',
+                    borderRadius: '9999px', minWidth: '20px', height: '20px',
+                    fontSize: '11px', fontWeight: 'bold',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: '0 4px', pointerEvents: 'none',
+                  }}>
+                    {lowStockCount}
+                  </span>
+                )}
+              </div>
 
-              <button
-                onClick={() => setStockFilter(f => f === 'out' ? 'all' : 'out')}
-                className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-bold border transition-colors ${
-                  stockFilter === 'out'
-                    ? 'bg-red-500 text-white border-red-500'
-                    : 'bg-white text-red-500 border-red-500 hover:bg-red-50'
-                }`}
-              >
-                Out of Stock
-              </button>
+              <div style={{ position: 'relative', display: 'inline-block' }}>
+                <button
+                  onClick={() => setStockFilter(f => f === 'out' ? 'all' : 'out')}
+                  className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-bold border transition-colors ${
+                    stockFilter === 'out'
+                      ? 'bg-red-500 text-white border-red-500'
+                      : 'bg-white text-red-500 border-red-500 hover:bg-red-50'
+                  }`}
+                >
+                  Out of Stock
+                </button>
+                {outOfStockCount > 0 && (
+                  <span style={{
+                    position: 'absolute', top: '-8px', right: '-8px',
+                    backgroundColor: '#ef4444', color: 'white',
+                    borderRadius: '9999px', minWidth: '20px', height: '20px',
+                    fontSize: '11px', fontWeight: 'bold',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: '0 4px', pointerEvents: 'none',
+                  }}>
+                    {outOfStockCount}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
