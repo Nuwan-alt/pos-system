@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Receipt, AlertCircle, Trash2, Undo2 } from 'lucide-react'
 import { apiFetch } from '../../lib/api'
+import highlandLogo from '../../images/highland.png'
 
 export default function CashierTransactions() {
   const navigate = useNavigate()
@@ -67,6 +68,7 @@ export default function CashierTransactions() {
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
+          <img src={highlandLogo} alt="Highland Logo" style={{ width: '48px', height: '48px', objectFit: 'contain', borderRadius: '50%' }} />
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Today's Transactions</h1>
             <p className="text-sm text-gray-500 mt-0.5">View and manage transactions</p>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, Receipt, Search, ShoppingCart, User, Trash2, PackagePlus, CreditCard, X } from 'lucide-react'
+import { LogOut, Receipt, Search, ShoppingCart, User, Trash2, PackagePlus, CreditCard, X, AlertCircle } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { apiFetch } from '../../lib/api'
 import highlandLogo from '../../images/highland.png'
@@ -17,6 +17,7 @@ export default function CashierTerminal() {
   const [qtyInputs,       setQtyInputs]       = useState({})
   const [completing,      setCompleting]      = useState(false)
   const [successMsg,      setSuccessMsg]      = useState('')
+  const [amountGiven,     setAmountGiven]     = useState('')
 
   function refetchAll() {
     apiFetch('/api/products').then(setProducts).catch(() => {})
@@ -39,7 +40,27 @@ export default function CashierTerminal() {
 
   const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0)
   const hasStockIssue = cart.some(item => item.qty > item.stock)
-  const canComplete = cart.length > 0 && selectedCashier !== '' && !hasStockIssue
+
+  const change = amountGiven !== '' && parseFloat(amountGiven) >= total
+    ? parseFloat(amountGiven) - total
+    : null
+  const isShortfall = amountGiven !== '' && parseFloat(amountGiven) < total
+
+  const canComplete = cart.length > 0 && selectedCashier !== '' && !hasStockIssue && !isShortfall
+
+  function getQuickAmounts(cartTotal) {
+    const amounts = []
+    const roundedUp = Math.ceil(cartTotal / 10) * 10
+    if (roundedUp !== cartTotal) amounts.push(roundedUp)
+    const hundreds = Math.ceil(cartTotal / 100) * 100
+    if (!amounts.includes(hundreds)) amounts.push(hundreds)
+    const twoHundreds = hundreds + 100
+    amounts.push(twoHundreds)
+    const fiveHundreds = Math.ceil(cartTotal / 500) * 500
+    if (!amounts.includes(fiveHundreds)) amounts.push(fiveHundreds)
+    if (!amounts.includes(1000)) amounts.push(1000)
+    return [...new Set(amounts)].sort((a, b) => a - b).slice(0, 4)
+  }
 
   const lowStockCount   = products.filter(p => p.stock > 0 && p.stock <= p.minThreshold).length
   const outOfStockCount = products.filter(p => p.stock === 0).length
@@ -109,6 +130,7 @@ export default function CashierTerminal() {
       setProducts(updated)
       setCart([])
       setSelectedCashier('')
+      setAmountGiven('')
       setSuccessMsg('Transaction completed!')
       setTimeout(() => setSuccessMsg(''), 3000)
     } catch (err) {
@@ -248,7 +270,7 @@ export default function CashierTerminal() {
           </div>
 
           {/* Product grid — scrollable */}
-          <div className="grid grid-cols-3 gap-4 overflow-y-auto flex-1 content-start">
+          <div className="grid grid-cols-4 gap-4 overflow-y-auto flex-1 content-start">
             {filteredProducts.map(product => (
               <div
                 key={product.id}
@@ -457,6 +479,70 @@ export default function CashierTerminal() {
               <span className="font-bold text-gray-900">Total</span>
               <span className="font-bold text-gray-900">Rs. {total.toFixed(2)}</span>
             </div>
+
+            {/* Cash tendering */}
+            {cart.length > 0 && (
+              <>
+                {/* Amount Given */}
+                <div style={{ marginTop: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                    <CreditCard size={15} color="#6b7280" />
+                    <span style={{ fontSize: '14px', fontWeight: '600', color: '#111827' }}>Amount Given</span>
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={amountGiven}
+                    onChange={e => setAmountGiven(e.target.value)}
+                    placeholder="Enter amount..."
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      fontSize: '16px',
+                      fontWeight: '500',
+                      backgroundColor: '#f3f4f6',
+                      border: isShortfall ? '1px solid #fca5a5' : '1px solid #e5e7eb',
+                      borderRadius: '10px',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                      color: '#111827',
+                    }}
+                  />
+                </div>
+
+                {/* Shortfall warning */}
+                {isShortfall && (
+                  <div style={{ marginTop: '8px', padding: '8px 12px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#dc2626', fontWeight: '500' }}>
+                    <AlertCircle size={14} />
+                    Short by Rs. {(total - parseFloat(amountGiven)).toFixed(2)}
+                  </div>
+                )}
+
+                {/* Change to return */}
+                {change !== null && (
+                  <div style={{ marginTop: '8px', padding: '12px 16px', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '14px', fontWeight: '500', color: '#15803d' }}>Change to return</span>
+                    <span style={{ fontSize: '20px', fontWeight: '700', color: '#16a34a' }}>Rs. {change.toFixed(2)}</span>
+                  </div>
+                )}
+
+                {/* Quick amount buttons */}
+                {amountGiven === '' && total > 0 && (
+                  <div style={{ marginTop: '8px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {getQuickAmounts(total).map(amount => (
+                      <button
+                        key={amount}
+                        onClick={() => setAmountGiven(String(amount))}
+                        style={{ padding: '5px 12px', fontSize: '12px', fontWeight: '600', backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '9999px', cursor: 'pointer', color: '#374151' }}
+                      >
+                        Rs. {amount}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
 
             {/* Success banner */}
             {successMsg && (
