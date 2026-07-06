@@ -4,6 +4,7 @@ import { LogOut, Receipt, Search, ShoppingCart, User, Trash2, PackagePlus, Credi
 import { useAuth } from '../../context/AuthContext'
 import { apiFetch } from '../../lib/api'
 import highlandLogo from '../../images/highland.png'
+import TransactionCompleteModal from '../../components/TransactionCompleteModal'
 
 export default function CashierTerminal() {
   const navigate = useNavigate()
@@ -16,8 +17,9 @@ export default function CashierTerminal() {
   const [selectedCashier, setSelectedCashier] = useState('')
   const [qtyInputs,       setQtyInputs]       = useState({})
   const [completing,      setCompleting]      = useState(false)
-  const [successMsg,      setSuccessMsg]      = useState('')
   const [amountGiven,     setAmountGiven]     = useState('')
+  const [showTransactionModal, setShowTransactionModal] = useState(false)
+  const [completedTransaction, setCompletedTransaction] = useState(null)
 
   function refetchAll() {
     apiFetch('/api/products').then(setProducts).catch(() => {})
@@ -111,7 +113,7 @@ export default function CashierTerminal() {
     if (!canComplete || completing) return
     setCompleting(true)
     try {
-      await apiFetch('/api/transactions', {
+      const result = await apiFetch('/api/transactions', {
         method: 'POST',
         body: JSON.stringify({
           cashierId: parseInt(selectedCashier),
@@ -125,19 +127,37 @@ export default function CashierTerminal() {
           })),
         }),
       })
-      // Refresh products so stock counts reflect the deduction
+      // Refresh products so stock counts reflect the deduction (already applied server-side)
       const updated = await apiFetch('/api/products')
       setProducts(updated)
-      setCart([])
-      setSelectedCashier('')
-      setAmountGiven('')
-      setSuccessMsg('Transaction completed!')
-      setTimeout(() => setSuccessMsg(''), 3000)
+
+      // Amount Given is optional in this flow; treat a blank entry as exact payment (no change)
+      const amountGivenNum = amountGiven !== '' ? parseFloat(amountGiven) : total
+
+      setCompletedTransaction({
+        transactionId: result.transactionRef,
+        date:          new Date().toISOString().split('T')[0],
+        time:          new Date().toLocaleTimeString('en-US'),
+        cashierName:   cashiers.find(c => c.id === parseInt(selectedCashier))?.name || 'Unknown',
+        cartItems:     cart.map(item => ({ name: item.name, quantity: item.qty, price: item.price })),
+        subtotal:      total,
+        amountGiven:   amountGivenNum,
+        change:        amountGivenNum - total,
+      })
+      setShowTransactionModal(true)
     } catch (err) {
       alert(err.message)
     } finally {
       setCompleting(false)
     }
+  }
+
+  function handleCloseTransaction() {
+    setCart([])
+    setSelectedCashier('')
+    setAmountGiven('')
+    setShowTransactionModal(false)
+    setCompletedTransaction(null)
   }
 
   return (
@@ -192,7 +212,7 @@ export default function CashierTerminal() {
       <div className="flex flex-1 min-h-0">
 
         {/* ── LEFT PANEL — Products ─────────────────────────────── */}
-        <div className="flex flex-col w-[65%] p-6 min-h-0">
+        <div className="flex flex-col w-[55%] p-6 min-h-0">
           <h2 className="text-base font-bold text-gray-900 mb-4">Products</h2>
 
           {/* Search + filter row — same grid as product grid; col-span-2 = exactly 2 cards + 1 gap */}
@@ -270,7 +290,7 @@ export default function CashierTerminal() {
           </div>
 
           {/* Product grid — scrollable */}
-          <div className="grid grid-cols-4 gap-4 overflow-y-auto flex-1 content-start">
+          <div className="grid grid-cols-3 gap-4 overflow-y-auto flex-1 content-start">
             {filteredProducts.map(product => (
               <div
                 key={product.id}
@@ -351,7 +371,7 @@ export default function CashierTerminal() {
         <div className="w-px bg-gray-200 shrink-0" />
 
         {/* ── RIGHT PANEL — Current Sale ────────────────────────── */}
-        <div className="flex flex-col w-[35%] p-6 min-h-0">
+        <div className="flex flex-col w-[45%] p-6 min-h-0">
 
           {/* Panel title */}
           <div className="flex items-center justify-between mb-4 shrink-0">
@@ -375,7 +395,7 @@ export default function CashierTerminal() {
           </div>
 
           {/* Cart items — scrollable */}
-          <div className="flex-1 overflow-y-auto min-h-0 mb-4">
+          <div style={{ flex: 1, overflowY: 'auto', minHeight: '250px', maxHeight: 'calc(100vh - 420px)', marginBottom: '16px' }}>
             {cart.length === 0 ? (
               <div className="flex items-center justify-center h-24">
                 <p className="text-sm text-gray-400">No items in cart</p>
@@ -454,18 +474,19 @@ export default function CashierTerminal() {
           </div>
 
           {/* ── Bottom section (never scrolls away) ─────────────── */}
-          <div className="shrink-0 border-t border-gray-100 pt-4 space-y-4">
+          <div className="shrink-0 border-t border-gray-100 pt-3">
 
             {/* Select Cashier */}
-            <div>
-              <div className="flex items-center gap-2 mb-2">
+            <div style={{ marginTop: '8px', marginBottom: '8px' }}>
+              <div className="flex items-center gap-2" style={{ marginBottom: '4px' }}>
                 <User className="w-4 h-4 text-gray-600" />
-                <span className="text-sm font-bold text-gray-900">Select Cashier</span>
+                <span style={{ fontSize: '13px', fontWeight: '700', color: '#111827' }}>Select Cashier</span>
               </div>
               <select
                 value={selectedCashier}
                 onChange={e => setSelectedCashier(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm bg-white outline-none focus:ring-2 focus:ring-gray-200"
+                className="w-full border border-gray-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-gray-200"
+                style={{ padding: '6px 10px', fontSize: '13px' }}
               >
                 <option value="">-- Select Cashier --</option>
                 {cashiers.map(c => (
@@ -475,7 +496,7 @@ export default function CashierTerminal() {
             </div>
 
             {/* Total */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between" style={{ marginTop: '8px', marginBottom: '8px', fontSize: '14px' }}>
               <span className="font-bold text-gray-900">Total</span>
               <span className="font-bold text-gray-900">Rs. {total.toFixed(2)}</span>
             </div>
@@ -484,10 +505,10 @@ export default function CashierTerminal() {
             {cart.length > 0 && (
               <>
                 {/* Amount Given */}
-                <div style={{ marginTop: '12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
-                    <CreditCard size={15} color="#6b7280" />
-                    <span style={{ fontSize: '14px', fontWeight: '600', color: '#111827' }}>Amount Given</span>
+                <div style={{ marginTop: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                    <CreditCard size={14} color="#6b7280" />
+                    <span style={{ fontSize: '12px', fontWeight: '600', color: '#111827' }}>Amount Given</span>
                   </div>
                   <input
                     type="number"
@@ -498,8 +519,8 @@ export default function CashierTerminal() {
                     placeholder="Enter amount..."
                     style={{
                       width: '100%',
-                      padding: '10px 14px',
-                      fontSize: '16px',
+                      padding: '7px 12px',
+                      fontSize: '14px',
                       fontWeight: '500',
                       backgroundColor: '#f3f4f6',
                       border: isShortfall ? '1px solid #fca5a5' : '1px solid #e5e7eb',
@@ -513,7 +534,7 @@ export default function CashierTerminal() {
 
                 {/* Shortfall warning */}
                 {isShortfall && (
-                  <div style={{ marginTop: '8px', padding: '8px 12px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#dc2626', fontWeight: '500' }}>
+                  <div style={{ marginTop: '6px', padding: '7px 12px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#dc2626', fontWeight: '500' }}>
                     <AlertCircle size={14} />
                     Short by Rs. {(total - parseFloat(amountGiven)).toFixed(2)}
                   </div>
@@ -521,20 +542,20 @@ export default function CashierTerminal() {
 
                 {/* Change to return */}
                 {change !== null && (
-                  <div style={{ marginTop: '8px', padding: '12px 16px', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '14px', fontWeight: '500', color: '#15803d' }}>Change to return</span>
-                    <span style={{ fontSize: '20px', fontWeight: '700', color: '#16a34a' }}>Rs. {change.toFixed(2)}</span>
+                  <div style={{ marginTop: '6px', padding: '7px 12px', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
+                    <span style={{ fontWeight: '500', color: '#15803d' }}>Change to return</span>
+                    <span style={{ fontSize: '16px', fontWeight: '700', color: '#16a34a' }}>Rs. {change.toFixed(2)}</span>
                   </div>
                 )}
 
                 {/* Quick amount buttons */}
                 {amountGiven === '' && total > 0 && (
-                  <div style={{ marginTop: '8px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  <div style={{ marginTop: '6px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                     {getQuickAmounts(total).map(amount => (
                       <button
                         key={amount}
                         onClick={() => setAmountGiven(String(amount))}
-                        style={{ padding: '5px 12px', fontSize: '12px', fontWeight: '600', backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '9999px', cursor: 'pointer', color: '#374151' }}
+                        style={{ padding: '3px 10px', fontSize: '11px', fontWeight: '600', backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '9999px', cursor: 'pointer', color: '#374151' }}
                       >
                         Rs. {amount}
                       </button>
@@ -544,18 +565,12 @@ export default function CashierTerminal() {
               </>
             )}
 
-            {/* Success banner */}
-            {successMsg && (
-              <div className="px-4 py-2 bg-green-50 border border-green-200 rounded-lg text-sm font-medium text-green-700 text-center">
-                {successMsg}
-              </div>
-            )}
-
             {/* Complete Transaction button */}
             <button
               onClick={completeTransaction}
               disabled={!canComplete || completing}
-              className={`w-full py-3 rounded-lg text-white font-bold text-sm transition-colors ${
+              style={{ marginTop: '8px', padding: '11px' }}
+              className={`w-full rounded-lg text-white font-bold text-sm transition-colors ${
                 canComplete && !completing
                   ? 'bg-gray-900 hover:bg-gray-800 cursor-pointer'
                   : 'bg-gray-400 cursor-not-allowed'
@@ -567,6 +582,15 @@ export default function CashierTerminal() {
         </div>
 
       </div>
+
+      {showTransactionModal && completedTransaction && (
+        <TransactionCompleteModal
+          {...completedTransaction}
+          onPrintBill={() => { console.log('print bill — coming soon'); handleCloseTransaction() }}
+          onSkip={handleCloseTransaction}
+          onClose={handleCloseTransaction}
+        />
+      )}
     </div>
   )
 }
