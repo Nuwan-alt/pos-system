@@ -60,11 +60,29 @@ router.get('/', async (req, res) => {
 
 // POST /api/transactions — complete a transaction (atomic: insert + deduct stock)
 router.post('/', async (req, res) => {
-  const { cashierId, items, total } = req.body
+  const { cashierId, items } = req.body
 
-  if (!cashierId || !Array.isArray(items) || items.length === 0 || total === undefined) {
-    return res.status(400).json({ error: 'cashierId, items, and total are required.' })
+  if (!cashierId || !Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'cashierId and items are required.' })
   }
+
+  // Recompute qty * unitPrice server-side for every item, and the overall
+  // total from those recomputed subtotals — never trust a client-supplied
+  // subtotal/total, since a stale or tampered client could record an
+  // arbitrary amount that doesn't match what was actually sold.
+  const computedItems = []
+  let total = 0
+  for (const item of items) {
+    const qty = parseInt(item.qty, 10)
+    const unitPrice = parseFloat(item.unitPrice)
+    if (!item.productId || !Number.isInteger(qty) || qty <= 0 || !Number.isFinite(unitPrice) || unitPrice < 0) {
+      return res.status(400).json({ error: 'Each item requires a valid productId, qty, and unitPrice.' })
+    }
+    const subtotal = Math.round(qty * unitPrice * 100) / 100
+    total += subtotal
+    computedItems.push({ ...item, qty, unitPrice, subtotal })
+  }
+  total = Math.round(total * 100) / 100
 
   const transactionRef = 'TXN' + Date.now()
   const conn = await db.getConnection()
@@ -78,7 +96,7 @@ router.post('/', async (req, res) => {
     )
     const transactionId = txnResult.insertId
 
-    for (const item of items) {
+    for (const item of computedItems) {
       await conn.query(
         `INSERT INTO transaction_items
            (transaction_id, product_id, product_name, qty, unit_price, subtotal)

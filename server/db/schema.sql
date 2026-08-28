@@ -107,6 +107,48 @@ CREATE TABLE IF NOT EXISTS deletion_requests (
 );
 
 -- ─────────────────────────────────────────────────────────────
+-- 7. stock_updates
+--    Audit log for every stock change (admin "adjust" or cashier
+--    "update"). quantity_added is a signed delta.
+-- ─────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS stock_updates (
+  id               INT                    NOT NULL AUTO_INCREMENT,
+  product_id       INT                    NOT NULL,
+  updated_by_id    INT                    NOT NULL,
+  updated_by_role  ENUM('admin','cashier') NOT NULL,
+  quantity_added   INT                    NOT NULL,
+  note             VARCHAR(255)           DEFAULT NULL,
+  updated_at       DATETIME               NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  CONSTRAINT fk_stock_updates_product
+    FOREIGN KEY (product_id)
+    REFERENCES products(id)
+);
+
+-- ─────────────────────────────────────────────────────────────
+-- 8. cash_drawer
+--    One record per calendar day (drawer_date UNIQUE).
+-- ─────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS cash_drawer (
+  id               INT                    NOT NULL AUTO_INCREMENT,
+  drawer_date      DATE                   NOT NULL UNIQUE,
+  opening_amount   DECIMAL(10,2)          NOT NULL,
+  opening_time     DATETIME               DEFAULT NULL,
+  opening_note     VARCHAR(255)           DEFAULT NULL,
+  opened_by_role   ENUM('admin','cashier') NOT NULL,
+  opened_by_id     INT                    NOT NULL,
+  opened_by_name   VARCHAR(100)           NOT NULL,
+  closing_amount   DECIMAL(10,2)          DEFAULT NULL,
+  closing_time     DATETIME               DEFAULT NULL,
+  closing_note     VARCHAR(255)           DEFAULT NULL,
+  closed_by_role   ENUM('admin','cashier') DEFAULT NULL,
+  closed_by_id     INT                    DEFAULT NULL,
+  closed_by_name   VARCHAR(100)           DEFAULT NULL,
+  status           ENUM('open','closed')  NOT NULL DEFAULT 'open',
+  PRIMARY KEY (id)
+);
+
+-- ─────────────────────────────────────────────────────────────
 -- SEED DATA
 -- ─────────────────────────────────────────────────────────────
 

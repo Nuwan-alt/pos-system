@@ -33,18 +33,19 @@ router.post('/', async (req, res) => {
   if (!name || !name.trim()) {
     return res.status(400).json({ error: 'Product name is required.' })
   }
-  if (!price || parseFloat(price) <= 0) {
-    return res.status(400).json({ error: 'Price must be greater than 0.' })
+  const parsedPrice = parseFloat(price)
+  if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+    return res.status(400).json({ error: 'Price must be a number greater than 0.' })
   }
   try {
     const [result] = await db.query(
       'INSERT INTO products (name, price, discount, stock, min_threshold) VALUES (?, ?, ?, ?, ?)',
-      [name.trim(), parseFloat(price), parseFloat(discount), parseInt(stock), parseInt(minThreshold)]
+      [name.trim(), parsedPrice, parseFloat(discount), parseInt(stock), parseInt(minThreshold)]
     )
     res.status(201).json({
       id:           result.insertId,
       name:         name.trim(),
-      price:        parseFloat(price),
+      price:        parsedPrice,
       discount:     parseFloat(discount),
       stock:        parseInt(stock),
       minThreshold: parseInt(minThreshold),
@@ -61,13 +62,14 @@ router.put('/:id', async (req, res) => {
   if (!name || !name.trim()) {
     return res.status(400).json({ error: 'Product name is required.' })
   }
-  if (!price || parseFloat(price) <= 0) {
-    return res.status(400).json({ error: 'Price must be greater than 0.' })
+  const parsedPrice = parseFloat(price)
+  if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+    return res.status(400).json({ error: 'Price must be a number greater than 0.' })
   }
   try {
     const [result] = await db.query(
       'UPDATE products SET name = ?, price = ?, discount = ?, min_threshold = ? WHERE id = ? AND is_deleted = 0',
-      [name.trim(), parseFloat(price), parseFloat(discount), parseInt(minThreshold, 10) || 0, req.params.id]
+      [name.trim(), parsedPrice, parseFloat(discount), parseInt(minThreshold, 10) || 0, req.params.id]
     )
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: 'Product not found.' })
