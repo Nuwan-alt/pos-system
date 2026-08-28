@@ -151,7 +151,7 @@ export default function CashierTerminal() {
     return [...new Set(amounts)].sort((a, b) => a - b).slice(0, 4)
   }
 
-  const lowStockCount   = products.filter(p => p.stock > 0 && p.stock <= p.minThreshold).length
+  const lowStockCount   = products.filter(p => p.stock > 0 && p.stock < p.minThreshold).length
   const outOfStockCount = products.filter(p => p.stock === 0).length
 
   function addToCart(product) {
