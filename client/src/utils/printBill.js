@@ -31,6 +31,7 @@ export function printBill(transaction) {
         .store-name { font-size: 16px; font-weight: bold; text-align: center; }
         .store-info { text-align: center; margin-bottom: 6px; }
         .meta-row { display: flex; justify-content: space-between; margin: 2px 0; }
+        .label { font-weight: bold; }
         .divider { border-top: 1px dashed #000; margin: 6px 0; }
         .col-header { display: flex; justify-content: space-between; font-weight: bold; }
         .item-name { font-weight: bold; margin-top: 4px; }
@@ -44,9 +45,9 @@ export function printBill(transaction) {
       <div class="store-name">SANTHULA MARKETING</div>
       <div class="store-info">Horana Road, Kottawa<br/>076 0121893</div>
       <div class="divider"></div>
-      <div class="meta-row"><span>DATE &nbsp; ${transaction.date}</span><span>TIME &nbsp; ${transaction.time}</span></div>
-      <div class="meta-row"><span>USER &nbsp; ${transaction.cashierName}</span><span>BILL NO &nbsp; ${billNo}</span></div>
-      <div class="meta-row"><span>CUS</span></div>
+      <div class="meta-row"><span><span class="label">DATE</span> &nbsp; ${transaction.date}</span><span><span class="label">TIME</span> &nbsp; ${transaction.time}</span></div>
+      <div class="meta-row"><span><span class="label">USER</span> &nbsp; ${transaction.cashierName}</span><span><span class="label">BILL NO</span> &nbsp; ${billNo}</span></div>
+      <div class="meta-row"><span class="label">CUS</span></div>
       <div class="divider"></div>
       <div class="col-header">
         <span>PRICE</span><span>DIS</span><span>QTY</span><span>AMOUNT</span>
@@ -67,10 +68,17 @@ export function printBill(transaction) {
     </html>
   `
 
-  const printWindow = window.open('', '_blank', 'width=320,height=600')
+  const popupWidth = Math.round(window.screen.availWidth / 2)
+  const popupHeight = window.screen.availHeight
+  const popupLeft = window.screen.availWidth - popupWidth
+  const printWindow = window.open(
+    '',
+    '_blank',
+    `width=${popupWidth},height=${popupHeight},left=${popupLeft},top=0`
+  )
   printWindow.document.write(html)
   printWindow.document.close()
+  printWindow.onafterprint = () => printWindow.close()
   printWindow.focus()
   printWindow.print()
-  printWindow.close()
 }

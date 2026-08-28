@@ -6,6 +6,7 @@ import { apiFetch, apiUrl } from '../../lib/api'
 import { getEffectivePrice } from '../../utils/pricing'
 import highlandLogo from '../../images/highland.png'
 import TransactionCompleteModal from '../../components/TransactionCompleteModal'
+import { printBill } from '../../utils/printBill'
 
 // Square product thumbnail with a graceful fallback: no image, a failed
 // load, and "not scrolled into view yet" all render the same neutral
@@ -224,7 +225,11 @@ export default function CashierTerminal() {
         date:          new Date().toISOString().split('T')[0],
         time:          new Date().toLocaleTimeString('en-US'),
         cashierName:   cashiers.find(c => c.id === parseInt(selectedCashier))?.name || 'Unknown',
-        cartItems:     cart.map(item => ({ name: item.name, quantity: item.qty, price: item.price })),
+        // price is already the post-discount effective unit price (see
+        // addToCart) — discount is passed separately as an informational
+        // "amount saved per unit" for the receipt's DIS column, matching
+        // printBill.js's non-recalculating template.
+        cartItems:     cart.map(item => ({ name: item.name, quantity: item.qty, price: item.price, discount: item.discountAmount })),
         subtotal:      total,
         amountGiven:   amountGivenNum,
         change:        amountGivenNum - total,
@@ -711,7 +716,7 @@ export default function CashierTerminal() {
       {showTransactionModal && completedTransaction && (
         <TransactionCompleteModal
           {...completedTransaction}
-          onPrintBill={() => { console.log('print bill — coming soon'); handleCloseTransaction() }}
+          onPrintBill={() => { printBill(completedTransaction); handleCloseTransaction() }}
           onSkip={handleCloseTransaction}
           onClose={handleCloseTransaction}
         />
