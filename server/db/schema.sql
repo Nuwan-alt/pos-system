@@ -35,6 +35,11 @@ CREATE TABLE IF NOT EXISTS cashiers (
 --    Soft-deleted via is_deleted flag; records are never removed
 --    so product_id FKs in transaction_items always stay valid.
 --
+--    barcode is nullable — not every product carries a manufacturer
+--    code; admin can leave it blank or auto-generate a placeholder,
+--    see server/utils/barcode.js. NULLs are exempt from the unique
+--    index, so any number of barcode-less products can coexist.
+--
 --    Images: thumbnail_blob (~200x200, <30KB, JPEG) and full_blob
 --    (~800x800 max, JPEG) are both generated server-side from a
 --    single upload — see server/utils/imageProcessing.js. has_image
@@ -50,6 +55,7 @@ CREATE TABLE IF NOT EXISTS products (
   discount_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   stock           INT           NOT NULL DEFAULT 0,
   min_threshold   INT           NOT NULL DEFAULT 0,
+  barcode         VARCHAR(32)   NULL,
   thumbnail_blob  MEDIUMBLOB    NULL,
   full_blob       MEDIUMBLOB    NULL,
   image_mime      VARCHAR(50)   NULL,
@@ -66,7 +72,8 @@ CREATE TABLE IF NOT EXISTS products (
   created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP
                                           ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (id)
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_products_barcode (barcode)
 );
 
 -- ─────────────────────────────────────────────────────────────

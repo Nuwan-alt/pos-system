@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Plus, Pencil, Search, Trash2, Lock, X, PackagePlus, Image as ImageIcon, Package } from 'lucide-react'
+import { ArrowLeft, Plus, Pencil, Search, Trash2, Lock, X, PackagePlus, Image as ImageIcon, Package, Barcode } from 'lucide-react'
 import { apiFetch, apiUrl } from '../../lib/api'
 import { getEffectivePrice } from '../../utils/pricing'
+import { generateMimicBarcode } from '../../utils/barcode'
 import PasswordInput from '../../components/PasswordInput'
 
-const EMPTY_FORM = { name: '', price: '', discountAmount: '0', minThreshold: '' }
+const EMPTY_FORM = { name: '', price: '', discountAmount: '0', minThreshold: '', barcode: '' }
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
@@ -137,6 +138,7 @@ export default function ManageInventory() {
     fd.append('price', form.price)
     fd.append('discountAmount', form.discountAmount || '0')
     fd.append('minThreshold', form.minThreshold || '0')
+    fd.append('barcode', form.barcode.trim())
     if (imageFile) fd.append('image', imageFile)
     if (editingId && removeImage) fd.append('removeImage', 'true')
     return fd
@@ -231,6 +233,7 @@ export default function ManageInventory() {
       price:          String(product.price),
       discountAmount: String(product.discountAmount),
       minThreshold:   String(product.minThreshold),
+      barcode:        product.barcode || '',
     })
     setImageFile(null)
     setRemoveImage(false)
@@ -279,6 +282,21 @@ export default function ManageInventory() {
       setStockErr(err.message)
     } finally {
       setStockBusy(false)
+    }
+  }
+
+  async function quickGenerateBarcode(product) {
+    const fd = new FormData()
+    fd.append('name', product.name)
+    fd.append('price', product.price)
+    fd.append('discountAmount', product.discountAmount)
+    fd.append('minThreshold', product.minThreshold)
+    fd.append('barcode', generateMimicBarcode())
+    try {
+      const updated = await apiFetch(`/api/products/${product.id}`, { method: 'PUT', body: fd })
+      setProducts(prev => prev.map(p => p.id === product.id ? updated : p))
+    } catch (err) {
+      window.alert(err.message || 'Failed to generate barcode.')
     }
   }
 
@@ -353,6 +371,21 @@ export default function ManageInventory() {
               <input type="text" placeholder="Enter product name" value={form.name}
                 onChange={e => patch({ name: e.target.value })}
                 className="w-full bg-gray-100 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-gray-300" />
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Barcode</label>
+              <div className="flex gap-2">
+                <input type="text" placeholder="Scan or enter barcode" value={form.barcode}
+                  onChange={e => patch({ barcode: e.target.value })}
+                  className="flex-1 bg-gray-100 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-gray-300" />
+                <button type="button" onClick={() => patch({ barcode: generateMimicBarcode() })}
+                  title="Generate a unique code for products without a manufacturer barcode"
+                  className="shrink-0 px-3 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-900 hover:text-white hover:border-gray-900 transition-colors">
+                  <Barcode className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 mt-1">Scan with a USB scanner, or click the icon to generate one.</p>
             </div>
 
             <div className="mb-4">
@@ -480,7 +513,7 @@ export default function ManageInventory() {
               </div>
             </div>
 
-            <div className="grid grid-cols-[36px_2fr_1fr_1fr_1fr_1fr_100px] gap-3 px-5 py-2 text-xs font-semibold text-gray-500 shrink-0 border-b border-gray-100">
+            <div className="grid grid-cols-[36px_2fr_1fr_1fr_1fr_1fr_120px] gap-3 px-5 py-2 text-xs font-semibold text-gray-500 shrink-0 border-b border-gray-100">
               <span></span>
               <span>Product Name</span>
               <span>Price</span>
@@ -517,7 +550,7 @@ export default function ManageInventory() {
                   const fp        = getEffectivePrice(product.price, product.discountAmount).toFixed(2)
                   return (
                     <div key={product.id}
-                      className={`grid grid-cols-[36px_2fr_1fr_1fr_1fr_1fr_100px] gap-3 px-5 py-3 items-center border-b border-gray-50 text-sm ${
+                      className={`grid grid-cols-[36px_2fr_1fr_1fr_1fr_1fr_120px] gap-3 px-5 py-3 items-center border-b border-gray-50 text-sm ${
                         isEditing ? 'bg-gray-100' : isLow ? 'bg-[#fff5f5]' : 'bg-white'
                       }`}>
                       <InventoryThumbnail product={product} />
@@ -532,6 +565,13 @@ export default function ManageInventory() {
                         )}
                       </span>
                       <div className="flex items-center gap-1.5 justify-end">
+                        {!product.barcode && (
+                          <button onClick={() => quickGenerateBarcode(product)}
+                            className="p-1.5 rounded-lg border border-gray-200 bg-white text-gray-400 hover:bg-purple-600 hover:border-purple-600 hover:text-white transition-colors"
+                            title="Generate barcode">
+                            <Barcode className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <button onClick={() => openStockModal(product)}
                           className="p-1.5 rounded-lg border border-gray-200 bg-white text-gray-400 hover:bg-green-600 hover:border-green-600 hover:text-white transition-colors"
                           title="Update stock">

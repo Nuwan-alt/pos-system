@@ -3,6 +3,7 @@ const router = express.Router()
 const db = require('../db/connection')
 const verifyAdminPassword = require('../middleware/verifyAdminPassword')
 const { validateDiscountAmount } = require('../utils/pricing')
+const { validateBarcode } = require('../utils/barcode')
 const { uploadSingleImage } = require('../middleware/upload')
 const { processProductImage, assertWithinMaxPacket, ImageValidationError } = require('../utils/imageProcessing')
 
@@ -18,6 +19,7 @@ function toClient(r) {
     discountAmount: parseFloat(r.discount_amount),
     stock:          r.stock,
     minThreshold:   r.min_threshold,
+    barcode:        r.barcode,
     hasImage:       Boolean(r.has_image),
     thumbnailUrl:   r.has_image ? `/api/products/${r.id}/image/thumb?v=${r.image_version}` : null,
     // Only the admin edit form ever uses this — the cashier terminal must
@@ -27,7 +29,7 @@ function toClient(r) {
   }
 }
 
-const LIST_COLUMNS = 'id, name, price, discount_amount, stock, min_threshold, has_image, image_version'
+const LIST_COLUMNS = 'id, name, price, discount_amount, stock, min_threshold, barcode, has_image, image_version'
 
 // GET /api/products — all non-deleted products
 router.get('/', async (req, res) => {
@@ -82,7 +84,7 @@ async function serveProductImage(req, res, column) {
 
 // POST /api/products — add product (multipart/form-data; optional "image" file)
 router.post('/', uploadSingleImage('image'), async (req, res) => {
-  const { name, price, discountAmount = 0, stock = 0, minThreshold = 0 } = req.body
+  const { name, price, discountAmount = 0, stock = 0, minThreshold = 0, barcode } = req.body
   if (!name || !name.trim()) {
     return res.status(400).json({ error: 'Product name is required.' })
   }
@@ -95,8 +97,23 @@ router.post('/', uploadSingleImage('image'), async (req, res) => {
   if (discountError) {
     return res.status(400).json({ error: discountError })
   }
+  const trimmedBarcode = barcode && barcode.trim() ? barcode.trim() : null
+  const barcodeError = validateBarcode(trimmedBarcode)
+  if (barcodeError) {
+    return res.status(400).json({ error: barcodeError })
+  }
 
   try {
+    if (trimmedBarcode) {
+      const [dupe] = await db.query(
+        'SELECT id FROM products WHERE barcode = ? AND is_deleted = 0',
+        [trimmedBarcode]
+      )
+      if (dupe.length > 0) {
+        return res.status(400).json({ error: 'This barcode is already assigned to another product.' })
+      }
+    }
+
     let thumbnailBlob = null, fullBlob = null, imageMime = null, hasImage = 0, imageVersion = 0
     if (req.file) {
       const processed = await processProductImage(req.file.buffer)
@@ -112,9 +129,9 @@ router.post('/', uploadSingleImage('image'), async (req, res) => {
     // row exists, so a bad upload never leaves a half-created product.
     const [result] = await db.query(
       `INSERT INTO products
-         (name, price, discount_amount, stock, min_threshold, thumbnail_blob, full_blob, image_mime, has_image, image_version)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [name.trim(), parsedPrice, parsedDiscountAmount, parseInt(stock), parseInt(minThreshold),
+         (name, price, discount_amount, stock, min_threshold, barcode, thumbnail_blob, full_blob, image_mime, has_image, image_version)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [name.trim(), parsedPrice, parsedDiscountAmount, parseInt(stock), parseInt(minThreshold), trimmedBarcode,
        thumbnailBlob, fullBlob, imageMime, hasImage, imageVersion]
     )
 
@@ -123,6 +140,9 @@ router.post('/', uploadSingleImage('image'), async (req, res) => {
   } catch (err) {
     if (err instanceof ImageValidationError) {
       return res.status(400).json({ error: err.message })
+    }
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ error: 'This barcode is already assigned to another product.' })
     }
     console.error('POST /products error:', err)
     res.status(500).json({ error: 'Server error.' })
@@ -133,7 +153,7 @@ router.post('/', uploadSingleImage('image'), async (req, res) => {
 // multipart/form-data: an "image" file replaces the current image; a
 // removeImage=true field clears it; neither leaves the image untouched.
 router.put('/:id', uploadSingleImage('image'), async (req, res) => {
-  const { name, price, discountAmount = 0, minThreshold = 0, removeImage } = req.body
+  const { name, price, discountAmount = 0, minThreshold = 0, removeImage, barcode } = req.body
   if (!name || !name.trim()) {
     return res.status(400).json({ error: 'Product name is required.' })
   }
@@ -146,10 +166,25 @@ router.put('/:id', uploadSingleImage('image'), async (req, res) => {
   if (discountError) {
     return res.status(400).json({ error: discountError })
   }
+  const trimmedBarcode = barcode && barcode.trim() ? barcode.trim() : null
+  const barcodeError = validateBarcode(trimmedBarcode)
+  if (barcodeError) {
+    return res.status(400).json({ error: barcodeError })
+  }
 
   try {
-    const setClauses = ['name = ?', 'price = ?', 'discount_amount = ?', 'min_threshold = ?']
-    const params = [name.trim(), parsedPrice, parsedDiscountAmount, parseInt(minThreshold, 10) || 0]
+    if (trimmedBarcode) {
+      const [dupe] = await db.query(
+        'SELECT id FROM products WHERE barcode = ? AND is_deleted = 0 AND id != ?',
+        [trimmedBarcode, req.params.id]
+      )
+      if (dupe.length > 0) {
+        return res.status(400).json({ error: 'This barcode is already assigned to another product.' })
+      }
+    }
+
+    const setClauses = ['name = ?', 'price = ?', 'discount_amount = ?', 'min_threshold = ?', 'barcode = ?']
+    const params = [name.trim(), parsedPrice, parsedDiscountAmount, parseInt(minThreshold, 10) || 0, trimmedBarcode]
 
     if (req.file) {
       const processed = await processProductImage(req.file.buffer)
@@ -176,6 +211,9 @@ router.put('/:id', uploadSingleImage('image'), async (req, res) => {
   } catch (err) {
     if (err instanceof ImageValidationError) {
       return res.status(400).json({ error: err.message })
+    }
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ error: 'This barcode is already assigned to another product.' })
     }
     console.error('PUT /products/:id error:', err)
     res.status(500).json({ error: 'Server error.' })

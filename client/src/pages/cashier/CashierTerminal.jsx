@@ -315,6 +315,15 @@ export default function CashierTerminal() {
                   placeholder="Search..."
                   value={search}
                   onChange={e => setSearch(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key !== 'Enter') return
+                    const match = products.find(p => p.barcode && p.barcode === search.trim())
+                    if (match) {
+                      addToCart(match)
+                      setSearch('')
+                      e.preventDefault()
+                    }
+                  }}
                   className="w-full bg-gray-100 rounded-full pl-10 pr-9 py-2 text-sm outline-none focus:ring-2 focus:ring-gray-200"
                 />
                 {search && (
