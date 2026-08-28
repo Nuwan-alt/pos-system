@@ -1,14 +1,62 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Plus, Pencil, Search, Trash2, Lock, X, PackagePlus } from 'lucide-react'
-import { apiFetch } from '../../lib/api'
+import { ArrowLeft, Plus, Pencil, Search, Trash2, Lock, X, PackagePlus, Image as ImageIcon, Package } from 'lucide-react'
+import { apiFetch, apiUrl } from '../../lib/api'
+import { getEffectivePrice } from '../../utils/pricing'
 
-const EMPTY_FORM = { name: '', price: '', discount: '0', minThreshold: '' }
+const EMPTY_FORM = { name: '', price: '', discountAmount: '0', minThreshold: '' }
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+
+// Mirrors the server's rules (server/utils/imageProcessing.js) so the admin
+// sees the same error inline instead of waiting on a round-trip — the
+// server still re-validates by content, this is just a fast first pass.
+function validateImageFile(file) {
+  if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+    return 'Only JPEG, PNG, and WebP images are allowed.'
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    return 'Image must be 5MB or smaller.'
+  }
+  return null
+}
+
+// Small thumbnail for the inventory table — same graceful-fallback pattern
+// as the cashier card's ProductThumbnail, sized for a compact table row.
+function InventoryThumbnail({ product }) {
+  const [imgError, setImgError] = useState(false)
+  const showImage = product.hasImage && !imgError
+
+  useEffect(() => { setImgError(false) }, [product.thumbnailUrl])
+
+  return (
+    <div style={{
+      width: '32px', height: '32px', flexShrink: 0, borderRadius: '6px', overflow: 'hidden',
+      backgroundColor: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      {showImage ? (
+        <img
+          src={apiUrl(product.thumbnailUrl)}
+          alt={product.name}
+          width={32}
+          height={32}
+          loading="lazy"
+          draggable={false}
+          onError={() => setImgError(true)}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none', userSelect: 'none' }}
+        />
+      ) : (
+        <Package size={14} strokeWidth={1.5} color="#9ca3af" />
+      )}
+    </div>
+  )
+}
 
 export default function ManageInventory() {
   const navigate = useNavigate()
   const [products,    setProducts]    = useState([])
   const [loading,     setLoading]     = useState(true)
+  const [loadError,   setLoadError]   = useState('')
   const [form,        setForm]        = useState(EMPTY_FORM)
   const [editingId,   setEditingId]   = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -26,11 +74,24 @@ export default function ManageInventory() {
   const [stockErr,     setStockErr]     = useState('')
   const [stockBusy,    setStockBusy]    = useState(false)
   const [stockSuccess, setStockSuccess] = useState(null)
+  const [editingProduct, setEditingProduct] = useState(null) // full product being edited, for its current image
+  const [imageFile,      setImageFile]      = useState(null) // newly-selected File (add or replace)
+  const [imagePreview,   setImagePreview]   = useState(null) // object URL for imageFile
+  const [imageError,     setImageError]     = useState('')
+  const [removeImage,    setRemoveImage]    = useState(false) // edit-mode: user asked to clear the image
+
+  useEffect(() => {
+    if (!imageFile) { setImagePreview(null); return }
+    const url = URL.createObjectURL(imageFile)
+    setImagePreview(url)
+    return () => URL.revokeObjectURL(url)
+  }, [imageFile])
 
   function fetchProducts() {
+    setLoadError('')
     apiFetch('/api/products')
       .then(data => setProducts(data))
-      .catch(() => {})
+      .catch(err => setLoadError(err.message || 'Failed to load products.'))
       .finally(() => setLoading(false))
   }
 
@@ -54,25 +115,73 @@ export default function ManageInventory() {
 
   function finalPrice() {
     const p = parseFloat(form.price) || 0
-    const d = parseFloat(form.discount) || 0
-    return (p * (1 - d / 100)).toFixed(2)
+    const d = parseFloat(form.discountAmount) || 0
+    return getEffectivePrice(p, d).toFixed(2)
   }
 
   function validate() {
+    const price = parseFloat(form.price)
+    const discountAmount = parseFloat(form.discountAmount) || 0
     if (!form.name.trim())                                             { setFormError('Product name is required.'); return false }
-    if (isNaN(parseFloat(form.price)) || parseFloat(form.price) <= 0) { setFormError('Price must be greater than 0.'); return false }
+    if (isNaN(price) || price <= 0)                                    { setFormError('Price must be greater than 0.'); return false }
     if (parseFloat(form.minThreshold) < 0 || isNaN(parseFloat(form.minThreshold))) { setFormError('Threshold cannot be negative.'); return false }
+    if (isNaN(discountAmount) || discountAmount < 0)                   { setFormError('Discount amount must be 0 or greater.'); return false }
+    if (discountAmount >= price)                                       { setFormError('Discount amount must be less than the price.'); return false }
     return true
   }
 
-  function buildPayload() {
-    return {
-      name:         form.name.trim(),
-      price:        parseFloat(form.price),
-      discount:     parseFloat(form.discount) || 0,
-      minThreshold: parseInt(form.minThreshold, 10) || 0,
-    }
+  function buildFormData() {
+    const fd = new FormData()
+    fd.append('name', form.name.trim())
+    fd.append('price', form.price)
+    fd.append('discountAmount', form.discountAmount || '0')
+    fd.append('minThreshold', form.minThreshold || '0')
+    if (imageFile) fd.append('image', imageFile)
+    if (editingId && removeImage) fd.append('removeImage', 'true')
+    return fd
   }
+
+  function resetForm() {
+    setEditingId(null)
+    setEditingProduct(null)
+    setFormError('')
+    setForm(EMPTY_FORM)
+    setImageFile(null)
+    setRemoveImage(false)
+    setImageError('')
+  }
+
+  function handleImageSelect(e) {
+    const file = e.target.files?.[0]
+    e.target.value = '' // allow re-selecting the same file later (e.g. after Clear)
+    if (!file) return
+    const err = validateImageFile(file)
+    if (err) { setImageError(err); return }
+    setImageError('')
+    setImageFile(file)
+    setRemoveImage(false)
+  }
+
+  function clearSelectedImage() {
+    setImageFile(null)
+    setImageError('')
+  }
+
+  function handleRemoveImage() {
+    if (!window.confirm("Remove this product's image?")) return
+    setImageFile(null)
+    setRemoveImage(true)
+    setImageError('')
+  }
+
+  // What the preview box shows: a newly-picked file wins, then "about to be
+  // removed" (nothing), then the product's current image (edit mode only),
+  // then nothing (add mode with no selection yet).
+  const displayImageUrl = imageFile
+    ? imagePreview
+    : removeImage
+      ? null
+      : (editingProduct?.hasImage ? apiUrl(editingProduct.fullUrl) : null)
 
   async function handleAdd() {
     if (!validate()) return
@@ -80,10 +189,10 @@ export default function ManageInventory() {
     try {
       const created = await apiFetch('/api/products', {
         method: 'POST',
-        body: JSON.stringify(buildPayload()),
+        body: buildFormData(),
       })
       setProducts(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
-      setForm(EMPTY_FORM)
+      resetForm()
       setSuccessMsg('Product added successfully!')
       setTimeout(() => setSuccessMsg(''), 2000)
     } catch (err) {
@@ -97,16 +206,15 @@ export default function ManageInventory() {
     if (!validate()) return
     setSubmitting(true)
     try {
-      await apiFetch(`/api/products/${editingId}`, {
+      const updated = await apiFetch(`/api/products/${editingId}`, {
         method: 'PUT',
-        body: JSON.stringify(buildPayload()),
+        body: buildFormData(),
       })
       setProducts(prev =>
-        prev.map(p => p.id === editingId ? { ...p, ...buildPayload() } : p)
+        prev.map(p => p.id === editingId ? updated : p)
             .sort((a, b) => a.name.localeCompare(b.name))
       )
-      setEditingId(null)
-      setForm(EMPTY_FORM)
+      resetForm()
     } catch (err) {
       setFormError(err.message)
     } finally {
@@ -116,12 +224,16 @@ export default function ManageInventory() {
 
   function startEdit(product) {
     setEditingId(product.id)
+    setEditingProduct(product)
     setForm({
-      name:         product.name,
-      price:        String(product.price),
-      discount:     String(product.discount),
-      minThreshold: String(product.minThreshold),
+      name:           product.name,
+      price:          String(product.price),
+      discountAmount: String(product.discountAmount),
+      minThreshold:   String(product.minThreshold),
     })
+    setImageFile(null)
+    setRemoveImage(false)
+    setImageError('')
     setFormError('')
     setSuccessMsg('')
   }
@@ -170,9 +282,7 @@ export default function ManageInventory() {
   }
 
   function cancelEdit() {
-    setEditingId(null)
-    setForm(EMPTY_FORM)
-    setFormError('')
+    resetForm()
   }
 
   function openDelete(product) {
@@ -245,6 +355,47 @@ export default function ManageInventory() {
             </div>
 
             <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Product Image</label>
+              <div className="flex items-center gap-3">
+                <div style={{
+                  width: '64px', height: '64px', flexShrink: 0, borderRadius: '10px', overflow: 'hidden',
+                  backgroundColor: '#f3f4f6', border: '1px solid #e5e7eb',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {displayImageUrl ? (
+                    <img src={displayImageUrl} alt="Preview"
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  ) : (
+                    <ImageIcon size={22} strokeWidth={1.5} color="#9ca3af" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center flex-wrap gap-x-3 gap-y-1">
+                    <label className="inline-block cursor-pointer text-sm font-medium text-blue-600 hover:text-blue-800">
+                      {displayImageUrl ? 'Change image' : 'Choose image'}
+                      <input type="file" accept="image/jpeg,image/png,image/webp"
+                        onChange={handleImageSelect} className="hidden" />
+                    </label>
+                    {imageFile && (
+                      <button type="button" onClick={clearSelectedImage}
+                        className="text-sm text-gray-500 hover:text-gray-700">
+                        Clear
+                      </button>
+                    )}
+                    {editingId && editingProduct?.hasImage && !imageFile && !removeImage && (
+                      <button type="button" onClick={handleRemoveImage}
+                        className="text-sm text-red-500 hover:text-red-700">
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">JPEG, PNG, or WebP. Max 5MB.</p>
+                  {imageError && <p className="text-red-500 text-xs mt-1">{imageError}</p>}
+                </div>
+              </div>
+            </div>
+
+            <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-1">Unit Price (Rs.)</label>
               <input type="number" min="0" step="0.01" placeholder="0.00" value={form.price}
                 onChange={e => patch({ price: e.target.value })}
@@ -252,9 +403,9 @@ export default function ManageInventory() {
             </div>
 
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Discount (%)</label>
-              <input type="number" min="0" max="100" placeholder="0" value={form.discount}
-                onChange={e => patch({ discount: e.target.value })}
+              <label className="block text-sm font-medium text-gray-700 mb-1">Discount Amount (Rs.)</label>
+              <input type="number" min="0" step="0.01" placeholder="0.00" value={form.discountAmount}
+                onChange={e => patch({ discountAmount: e.target.value })}
                 className="w-full bg-gray-100 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-gray-300 no-spinner" />
               <p className="text-xs text-gray-400 mt-1">Final Price: Rs. {finalPrice()}</p>
             </div>
@@ -328,10 +479,11 @@ export default function ManageInventory() {
               </div>
             </div>
 
-            <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_100px] gap-3 px-5 py-2 text-xs font-semibold text-gray-500 shrink-0 border-b border-gray-100">
+            <div className="grid grid-cols-[36px_2fr_1fr_1fr_1fr_1fr_100px] gap-3 px-5 py-2 text-xs font-semibold text-gray-500 shrink-0 border-b border-gray-100">
+              <span></span>
               <span>Product Name</span>
               <span>Price</span>
-              <span>Discount</span>
+              <span>Discount (Rs.)</span>
               <span>Final Price</span>
               <span>Stock</span>
               <span className="text-right">Actions</span>
@@ -342,6 +494,17 @@ export default function ManageInventory() {
                 <div className="flex items-center justify-center h-24">
                   <p className="text-sm text-gray-400">Loading…</p>
                 </div>
+              ) : loadError ? (
+                <div className="flex flex-col items-center justify-center h-32 gap-2 px-6 text-center">
+                  <p className="text-sm font-semibold text-red-600">Couldn't load products</p>
+                  <p className="text-xs text-gray-500">{loadError}</p>
+                  <button
+                    onClick={() => { setLoading(true); fetchProducts() }}
+                    className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline mt-1"
+                  >
+                    Retry
+                  </button>
+                </div>
               ) : filtered.length === 0 ? (
                 <div className="flex items-center justify-center h-24">
                   <p className="text-sm text-gray-400">No products found</p>
@@ -350,15 +513,16 @@ export default function ManageInventory() {
                 filtered.map(product => {
                   const isLow     = product.stock < product.minThreshold
                   const isEditing = editingId === product.id
-                  const fp        = (product.price * (1 - product.discount / 100)).toFixed(2)
+                  const fp        = getEffectivePrice(product.price, product.discountAmount).toFixed(2)
                   return (
                     <div key={product.id}
-                      className={`grid grid-cols-[2fr_1fr_1fr_1fr_1fr_100px] gap-3 px-5 py-3 items-center border-b border-gray-50 text-sm ${
+                      className={`grid grid-cols-[36px_2fr_1fr_1fr_1fr_1fr_100px] gap-3 px-5 py-3 items-center border-b border-gray-50 text-sm ${
                         isEditing ? 'bg-gray-100' : isLow ? 'bg-[#fff5f5]' : 'bg-white'
                       }`}>
+                      <InventoryThumbnail product={product} />
                       <span className="font-semibold text-gray-900 truncate">{product.name}</span>
                       <span className="text-gray-600">Rs. {product.price.toFixed(2)}</span>
-                      <span className="text-gray-600">{product.discount}%</span>
+                      <span className="text-gray-600">Rs. {product.discountAmount.toFixed(2)}</span>
                       <span className="font-bold text-gray-900">Rs. {fp}</span>
                       <span className={`font-semibold ${isLow ? 'text-red-600' : 'text-gray-600'}`}>
                         {product.stock} units

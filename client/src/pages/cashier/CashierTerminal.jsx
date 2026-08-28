@@ -1,10 +1,97 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, Receipt, Search, ShoppingCart, User, Trash2, PackagePlus, CreditCard, X, AlertCircle } from 'lucide-react'
+import { LogOut, Receipt, Search, ShoppingCart, User, Trash2, PackagePlus, CreditCard, X, AlertCircle, Package } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
-import { apiFetch } from '../../lib/api'
+import { apiFetch, apiUrl } from '../../lib/api'
+import { getEffectivePrice } from '../../utils/pricing'
 import highlandLogo from '../../images/highland.png'
 import TransactionCompleteModal from '../../components/TransactionCompleteModal'
+
+// Square product thumbnail with a graceful fallback: no image, a failed
+// load, and "not scrolled into view yet" all render the same neutral
+// placeholder — never a broken-image icon, and the box's size never changes,
+// so cards don't shift as images load in. Sized at 64/80px (~1.45x the
+// previous 44/56px) for at-a-glance recognizability. That growth ate
+// directly into the text column's width budget, so the card's padding,
+// the thumb-to-text gap, and the price row's font size were all re-tuned
+// (and the stock pill got the same nowrap/flexShrink:0 treatment the price
+// row already had) to keep every "must not wrap/overlap/change height"
+// guarantee intact — re-verified against a 4-digit discounted price, a
+// 4-digit stock count, and a long name, all at once.
+//
+// Lazy-loaded via IntersectionObserver, not just the native loading="lazy"
+// attribute — with a ~150-product catalogue, native lazy-load heuristics
+// alone aren't a hard enough guarantee that off-screen rows don't all fire
+// at once. The observer only starts pointing a real <img> at the network
+// once a card is actually near the viewport; only /image/thumb is ever
+// requested here, never /image/full.
+function ProductThumbnail({ product }) {
+  const [imgError, setImgError] = useState(false)
+  const [inView, setInView] = useState(false)
+  const containerRef = useRef(null)
+  const showImage = product.hasImage && inView && !imgError
+
+  // If a product's image ever changes, give the new URL a fresh chance
+  // instead of staying stuck on a stale failure.
+  useEffect(() => { setImgError(false) }, [product.thumbnailUrl])
+
+  useEffect(() => {
+    if (!product.hasImage) return // nothing to fetch — skip the observer entirely
+    const el = containerRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setInView(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: '200px' } // start the fetch a little before it's actually visible
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [product.id, product.hasImage])
+
+  return (
+    <div
+      ref={containerRef}
+      className="w-16 h-16 md:w-20 md:h-20"
+      style={{
+        flexShrink: 0,
+        borderRadius: '10px',
+        overflow: 'hidden',
+        backgroundColor: '#f3f4f6',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      {showImage ? (
+        <img
+          src={apiUrl(product.thumbnailUrl)}
+          alt={product.name}
+          width={80}
+          height={80}
+          loading="lazy"
+          draggable={false}
+          onError={() => setImgError(true)}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            display: 'block',
+            pointerEvents: 'none',
+            userSelect: 'none',
+          }}
+        />
+      ) : (
+        <div style={{ color: '#9ca3af', userSelect: 'none' }}>
+          <Package size={26} strokeWidth={1.5} />
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function CashierTerminal() {
   const navigate = useNavigate()
@@ -69,9 +156,7 @@ export default function CashierTerminal() {
 
   function addToCart(product) {
     if (product.stock === 0) return
-    const effectivePrice = product.discount
-      ? parseFloat((product.price * (1 - product.discount / 100)).toFixed(2))
-      : product.price
+    const effectivePrice = getEffectivePrice(product.price, product.discountAmount)
     setCart(prev => {
       const existing = prev.find(item => item.id === product.id)
       if (existing) {
@@ -215,9 +300,9 @@ export default function CashierTerminal() {
         <div className="flex flex-col w-[55%] p-6 min-h-0">
           <h2 className="text-base font-bold text-gray-900 mb-4">Products</h2>
 
-          {/* Search + filter row — same grid as product grid; col-span-2 = exactly 2 cards + 1 gap */}
-          <div className="grid grid-cols-3 gap-4 mb-4 shrink-0">
-            <div className="col-span-3 flex items-center gap-2">
+          {/* Search + filter row — same grid as product grid, so it always spans full width */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4 shrink-0">
+            <div className="col-span-2 md:col-span-3 flex items-center gap-2">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                 <input
@@ -290,12 +375,15 @@ export default function CashierTerminal() {
           </div>
 
           {/* Product grid — scrollable */}
-          <div className="grid grid-cols-3 gap-4 overflow-y-auto flex-1 content-start">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 overflow-y-auto flex-1 content-start">
             {filteredProducts.map(product => (
               <div
                 key={product.id}
                 onClick={() => addToCart(product)}
                 style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
                   border: product.stock === 0 ? '1px solid #fecaca' : '1px solid #e5e7eb',
                   borderTop: `2px solid ${
                     product.stock === 0
@@ -306,7 +394,7 @@ export default function CashierTerminal() {
                   }`,
                   borderRadius: '12px',
                   backgroundColor: product.stock === 0 ? '#fff5f5' : 'white',
-                  padding: '14px',
+                  padding: '12px',
                   cursor: product.stock === 0 ? 'not-allowed' : 'pointer',
                   opacity: product.stock === 0 ? 0.85 : 1,
                   transition: 'box-shadow 0.15s ease',
@@ -314,55 +402,92 @@ export default function CashierTerminal() {
                 onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)'}
                 onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
               >
-                {/* Top row: name + discount badge */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
-                  <span style={{ fontWeight: '700', fontSize: '15px', color: '#111827' }}>{product.name}</span>
-                  {product.discount > 0 && (
-                    <span style={{ backgroundColor: '#dbeafe', color: '#3b82f6', fontSize: '11px', fontWeight: '700', padding: '2px 7px', borderRadius: '9999px', flexShrink: 0, marginLeft: '6px' }}>
-                      {product.discount}% OFF
+                {/* LEFT: text content */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {/* Name — clamped to 2 lines with a fixed-height block so every
+                      card lines up regardless of name length; full text in the
+                      title tooltip so nothing is lost to the ellipsis. */}
+                  <p
+                    title={product.name}
+                    style={{
+                      fontWeight: '700',
+                      fontSize: '15px',
+                      lineHeight: '1.3',
+                      color: '#111827',
+                      margin: 0,
+                      height: '39px',
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {product.name}
+                  </p>
+
+                  {/* Discount badge row — always reserved at this height, empty
+                      when there's no discount, so card height never depends on
+                      whether a product has one. Lives here (not overlaid on the
+                      thumbnail) because badge width is unbounded — a fixed-size
+                      image can't safely contain "Rs. 1,200.00 OFF". */}
+                  <div style={{ height: '20px', marginTop: '4px', display: 'flex', alignItems: 'center' }}>
+                    {product.discountAmount > 0 && (
+                      <span style={{ backgroundColor: '#dbeafe', color: '#3b82f6', fontSize: '11px', fontWeight: '700', padding: '2px 7px', borderRadius: '9999px', whiteSpace: 'nowrap' }}>
+                        Rs. {product.discountAmount.toFixed(2)} OFF
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Price row — never wraps, even mid-value. Font sized down
+                      (20px -> 17px -> 15px -> 13px) so a 4-digit price plus a
+                      struck-through original still clears the thumbnail at
+                      3-column width, re-verified at the larger 64/80px
+                      thumbnail size — see ProductThumbnail's size note. */}
+                  <div style={{ marginTop: '4px', marginBottom: '4px', whiteSpace: 'nowrap' }}>
+                    {product.discountAmount > 0 && (
+                      <span style={{ fontSize: '10px', color: '#9ca3af', textDecoration: 'line-through', marginRight: '3px', whiteSpace: 'nowrap' }}>
+                        Rs. {product.price.toFixed(2)}
+                      </span>
+                    )}
+                    <span style={{ fontSize: '13px', fontWeight: '700', color: '#111827', whiteSpace: 'nowrap' }}>
+                      Rs. {getEffectivePrice(product.price, product.discountAmount).toFixed(2)}
                     </span>
-                  )}
+                  </div>
+
+                  {/* Bottom row: stock badge. flexShrink:0 + whiteSpace:nowrap on
+                      every variant — without them, a low/in-stock pill's text can
+                      wrap onto 2 lines in the narrower text column this thumbnail
+                      size leaves, growing that one card's height and (via CSS
+                      Grid's default align-items:stretch) the whole row's height
+                      with it. Same class of bug as the price row, same fix. */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '8px' }}>
+                    {product.stock === 0 ? (
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', flexShrink: 0, whiteSpace: 'nowrap', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '9999px', padding: '3px 7px' }}>
+                        <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#ef4444', flexShrink: 0, display: 'inline-block' }} />
+                        <span style={{ fontSize: '13px', fontWeight: '700', color: '#dc2626' }}>Out of stock</span>
+                      </div>
+                    ) : product.stock < product.minThreshold ? (
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', flexShrink: 0, whiteSpace: 'nowrap', backgroundColor: '#fefce8', border: '1px solid #fde68a', borderRadius: '9999px', padding: '3px 7px' }}>
+                        <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#f59e0b', flexShrink: 0, display: 'inline-block' }} />
+                        <span style={{ fontSize: '13px', fontWeight: '700', color: '#d97706' }}>{product.stock}</span>
+                        <span style={{ fontSize: '11px', color: '#d97706' }}>— Low Stock</span>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', flexShrink: 0, whiteSpace: 'nowrap', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '9999px', padding: '3px 7px' }}>
+                        <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#22c55e', flexShrink: 0, display: 'inline-block' }} />
+                        <span style={{ fontSize: '13px', fontWeight: '700', color: '#16a34a' }}>{product.stock}</span>
+                        <span style={{ fontSize: '11px', color: '#16a34a' }}>in stock</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                {/* Price row */}
-                <div style={{ marginBottom: '4px' }}>
-                  {product.discount > 0 && (
-                    <span style={{ fontSize: '12px', color: '#9ca3af', textDecoration: 'line-through', marginRight: '6px' }}>
-                      Rs. {product.price.toFixed(2)}
-                    </span>
-                  )}
-                  <span style={{ fontSize: '20px', fontWeight: '700', color: '#111827' }}>
-                    Rs. {product.discount
-                      ? (product.price * (1 - product.discount / 100)).toFixed(2)
-                      : product.price.toFixed(2)}
-                  </span>
-                </div>
-
-                {/* Bottom row: stock badge right-aligned */}
-                <div style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '8px' }}>
-                  {product.stock === 0 ? (
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '9999px', padding: '3px 10px' }}>
-                      <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#ef4444', flexShrink: 0, display: 'inline-block' }} />
-                      <span style={{ fontSize: '13px', fontWeight: '700', color: '#dc2626' }}>Out of stock</span>
-                    </div>
-                  ) : product.stock < product.minThreshold ? (
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#fefce8', border: '1px solid #fde68a', borderRadius: '9999px', padding: '3px 10px' }}>
-                      <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#f59e0b', flexShrink: 0, display: 'inline-block' }} />
-                      <span style={{ fontSize: '13px', fontWeight: '700', color: '#d97706' }}>{product.stock}</span>
-                      <span style={{ fontSize: '12px', color: '#d97706' }}>— Low Stock</span>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '9999px', padding: '3px 10px' }}>
-                      <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#22c55e', flexShrink: 0, display: 'inline-block' }} />
-                      <span style={{ fontSize: '13px', fontWeight: '700', color: '#16a34a' }}>{product.stock}</span>
-                      <span style={{ fontSize: '12px', color: '#16a34a' }}>in stock</span>
-                    </div>
-                  )}
-                </div>
+                {/* RIGHT: image thumbnail */}
+                <ProductThumbnail product={product} />
               </div>
             ))}
             {filteredProducts.length === 0 && (
-              <p className="col-span-3 text-sm text-gray-400 text-center py-8">No products found.</p>
+              <p className="col-span-2 md:col-span-3 text-sm text-gray-400 text-center py-8">No products found.</p>
             )}
           </div>
         </div>

@@ -31,18 +31,38 @@ CREATE TABLE IF NOT EXISTS cashiers (
 -- 3. products
 --    Soft-deleted via is_deleted flag; records are never removed
 --    so product_id FKs in transaction_items always stay valid.
+--
+--    Images: thumbnail_blob (~200x200, <30KB, JPEG) and full_blob
+--    (~800x800 max, JPEG) are both generated server-side from a
+--    single upload — see server/utils/imageProcessing.js. has_image
+--    exists so list/table/search queries never have to name the
+--    blob columns just to check presence — SELECT ... FROM products
+--    must NEVER select thumbnail_blob/full_blob except in the two
+--    routes whose entire job is serving image bytes.
 -- ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS products (
-  id            INT           NOT NULL AUTO_INCREMENT,
-  name          VARCHAR(255)  NOT NULL,
-  price         DECIMAL(10,2) NOT NULL,
-  discount      DECIMAL(5,2)  NOT NULL DEFAULT 0.00,
-  stock         INT           NOT NULL DEFAULT 0,
-  min_threshold INT           NOT NULL DEFAULT 0,
-  is_deleted    TINYINT(1)    NOT NULL DEFAULT 0,
-  created_at    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP
-                                       ON UPDATE CURRENT_TIMESTAMP,
+  id              INT           NOT NULL AUTO_INCREMENT,
+  name            VARCHAR(255)  NOT NULL,
+  price           DECIMAL(10,2) NOT NULL,
+  discount_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  stock           INT           NOT NULL DEFAULT 0,
+  min_threshold   INT           NOT NULL DEFAULT 0,
+  thumbnail_blob  MEDIUMBLOB    NULL,
+  full_blob       MEDIUMBLOB    NULL,
+  image_mime      VARCHAR(50)   NULL,
+  has_image       TINYINT(1)    NOT NULL DEFAULT 0,
+  -- Drives the image URLs' cache-busting ?v= param and their ETag.
+  -- Deliberately a counter, not updated_at: a wall-clock timestamp can
+  -- collide when two writes land in the same tick (plain DATETIME is only
+  -- 1-second precision, and even millisecond precision isn't a hard
+  -- guarantee under fast local writes) — an incrementing counter can't.
+  -- It also only changes when the image itself changes, not on every
+  -- unrelated text-field edit.
+  image_version   INT           NOT NULL DEFAULT 0,
+  is_deleted      TINYINT(1)    NOT NULL DEFAULT 0,
+  created_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                          ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id)
 );
 
@@ -110,43 +130,55 @@ CREATE TABLE IF NOT EXISTS deletion_requests (
 -- 7. stock_updates
 --    Audit log for every stock change (admin "adjust" or cashier
 --    "update"). quantity_added is a signed delta.
+--
+--    This table (and cash_drawer below) predate schema.sql — they were
+--    created ad hoc before either table existed here (see git history /
+--    CLAUDE.md's old "Known gap" note), so their exact shape was reverse
+--    -engineered from `SHOW CREATE TABLE` against the live DB rather than
+--    designed fresh: nullable updated_at, and utf8mb4_general_ci instead
+--    of this file's usual utf8mb4_unicode_ci. Matched here on purpose —
+--    a fresh install (Docker, a new machine) should behave identically
+--    to the table actually running in production, not a "cleaner"
+--    version of it.
 -- ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS stock_updates (
-  id               INT                    NOT NULL AUTO_INCREMENT,
-  product_id       INT                    NOT NULL,
-  updated_by_id    INT                    NOT NULL,
-  updated_by_role  ENUM('admin','cashier') NOT NULL,
-  quantity_added   INT                    NOT NULL,
-  note             VARCHAR(255)           DEFAULT NULL,
-  updated_at       DATETIME               NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  id               INT                     NOT NULL AUTO_INCREMENT,
+  product_id       INT                     NOT NULL,
+  updated_by_id    INT                     NOT NULL,
+  updated_by_role  ENUM('cashier','admin') NOT NULL,
+  quantity_added   INT                     NOT NULL,
+  note             VARCHAR(255)            DEFAULT NULL,
+  updated_at       DATETIME                DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   CONSTRAINT fk_stock_updates_product
     FOREIGN KEY (product_id)
     REFERENCES products(id)
-);
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 
 -- ─────────────────────────────────────────────────────────────
 -- 8. cash_drawer
---    One record per calendar day (drawer_date UNIQUE).
+--    One record per calendar day (drawer_date UNIQUE). Same
+--    reverse-engineered-from-live note as stock_updates above.
 -- ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS cash_drawer (
-  id               INT                    NOT NULL AUTO_INCREMENT,
-  drawer_date      DATE                   NOT NULL UNIQUE,
-  opening_amount   DECIMAL(10,2)          NOT NULL,
-  opening_time     DATETIME               DEFAULT NULL,
-  opening_note     VARCHAR(255)           DEFAULT NULL,
+  id               INT                     NOT NULL AUTO_INCREMENT,
+  drawer_date      DATE                    NOT NULL UNIQUE,
+  opening_amount   DECIMAL(10,2)           NOT NULL,
+  opening_time     DATETIME                NOT NULL,
+  opening_note     VARCHAR(255)            DEFAULT NULL,
   opened_by_role   ENUM('admin','cashier') NOT NULL,
-  opened_by_id     INT                    NOT NULL,
-  opened_by_name   VARCHAR(100)           NOT NULL,
-  closing_amount   DECIMAL(10,2)          DEFAULT NULL,
-  closing_time     DATETIME               DEFAULT NULL,
-  closing_note     VARCHAR(255)           DEFAULT NULL,
+  opened_by_id     INT                     NOT NULL,
+  opened_by_name   VARCHAR(100)            NOT NULL,
+  closing_amount   DECIMAL(10,2)           DEFAULT NULL,
+  closing_time     DATETIME                DEFAULT NULL,
+  closing_note     VARCHAR(255)            DEFAULT NULL,
   closed_by_role   ENUM('admin','cashier') DEFAULT NULL,
-  closed_by_id     INT                    DEFAULT NULL,
-  closed_by_name   VARCHAR(100)           DEFAULT NULL,
-  status           ENUM('open','closed')  NOT NULL DEFAULT 'open',
+  closed_by_id     INT                     DEFAULT NULL,
+  closed_by_name   VARCHAR(100)            DEFAULT NULL,
+  status           ENUM('open','closed')   DEFAULT 'open',
+  created_at       DATETIME                DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id)
-);
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 
 -- ─────────────────────────────────────────────────────────────
 -- SEED DATA
@@ -154,26 +186,5 @@ CREATE TABLE IF NOT EXISTS cash_drawer (
 
 INSERT INTO settings (`key`, value) VALUES
   ('admin_password',   'admin123'),
-  ('cashier_password', 'cashier123');
+  ('cashier_password', 'cash123');
 
-INSERT INTO cashiers (name, nic, mobile, status, created_at) VALUES
-  ('John Doe',     '200012345678', '0771234567', 'active',   '2026-05-15 00:00:00'),
-  ('Jane Smith',   '199556789012', '0712345678', 'active',   '2026-05-20 00:00:00'),
-  ('Mike Johnson', '981234567V',   '0751234567', 'disabled', '2026-05-25 00:00:00');
-
-INSERT INTO products (name, price, discount, stock, min_threshold) VALUES
-  ('Milk 1L',              120.00,  0.00, 150, 30),
-  ('Bread Loaf',            95.00,  0.00,  80, 20),
-  ('Eggs (12 Pack)',        420.00,  0.00,  60, 15),
-  ('Butter 200g',          250.00,  5.00,  45, 10),
-  ('Yoghurt 100g',          45.00, 10.00, 200, 50),
-  ('Curd 400g',            185.00,  0.00,  55, 15),
-  ('Orange Juice 1L',      350.00,  0.00,  40, 10),
-  ('Cool Drink 330ml',      80.00,  0.00, 120, 30),
-  ('Rice 1kg',             220.00,  0.00, 100, 25),
-  ('Sugar 1kg',            185.00,  0.00,  90, 20),
-  ('Cheese Slice 200g',    180.00,  0.00,  35, 10),
-  ('Dark Chocolate 100g',  225.00, 15.00,  50, 15),
-  ('Biscuits 200g',         75.00,  5.00,  18, 20),
-  ('Instant Noodles',       55.00,  0.00,  85, 25),
-  ('Coconut Oil 500ml',    320.00,  0.00,  30, 10);
