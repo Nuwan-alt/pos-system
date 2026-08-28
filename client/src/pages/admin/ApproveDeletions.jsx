@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, AlertCircle, CheckCircle, Check, X, Lock } from 'lucide-react'
 import { apiFetch } from '../../lib/api'
+import PasswordInput from '../../components/PasswordInput'
 
 export default function ApproveDeletions() {
   const navigate = useNavigate()
@@ -186,8 +187,7 @@ export default function ApproveDeletions() {
             <p className="font-bold text-gray-900 mb-5">{modal.request?.transactionRef}</p>
 
             <label className="block text-sm font-medium text-gray-700 mb-1">Enter Admin Password</label>
-            <input
-              type="password"
+            <PasswordInput
               placeholder="Admin password"
               value={password}
               onChange={e => { setPassword(e.target.value); setPwError('') }}

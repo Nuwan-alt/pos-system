@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Plus, Pencil, Search, Trash2, Lock, X, PackagePlus, Image as ImageIcon, Package } from 'lucide-react'
 import { apiFetch, apiUrl } from '../../lib/api'
 import { getEffectivePrice } from '../../utils/pricing'
+import PasswordInput from '../../components/PasswordInput'
 
 const EMPTY_FORM = { name: '', price: '', discountAmount: '0', minThreshold: '' }
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -687,7 +688,7 @@ export default function ManageInventory() {
             <p className="font-bold text-gray-900 mb-5">{deleteModal.productName}</p>
 
             <label className="block text-sm font-medium text-gray-700 mb-1">Enter Admin Password</label>
-            <input type="password" placeholder="Admin password" value={password}
+            <PasswordInput placeholder="Admin password" value={password}
               onChange={e => { setPassword(e.target.value); setPwError('') }}
               onKeyDown={e => e.key === 'Enter' && handleDelete()}
               className="w-full bg-gray-100 rounded-lg px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-gray-300" />

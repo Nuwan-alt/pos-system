@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Lock, X, Eye, EyeOff } from 'lucide-react'
+import { ArrowLeft, Lock, X } from 'lucide-react'
 import { apiFetch } from '../../lib/api'
+import PasswordInput from '../../components/PasswordInput'
 
 const MODAL_CONFIG = {
   admin: {
@@ -18,7 +19,6 @@ const MODAL_CONFIG = {
 
 const EMPTY_FORM = {
   currentPw: '', newPw: '', confirmPw: '',
-  showCurrent: false, showNew: false, showConfirm: false,
   errorField: null, errorMsg: '', success: false,
 }
 
@@ -169,19 +169,12 @@ export default function SystemSettings() {
             {/* Current Password */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-1">Current Password</label>
-              <div className="relative">
-                <input
-                  type={form.showCurrent ? 'text' : 'password'}
-                  placeholder="Enter current password"
-                  value={form.currentPw}
-                  onChange={e => patch({ currentPw: e.target.value, errorField: null, errorMsg: '' })}
-                  className="w-full bg-gray-100 rounded-lg px-4 py-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-gray-300"
-                />
-                <button type="button" onClick={() => patch({ showCurrent: !form.showCurrent })}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                  {form.showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
+              <PasswordInput
+                placeholder="Enter current password"
+                value={form.currentPw}
+                onChange={e => patch({ currentPw: e.target.value, errorField: null, errorMsg: '' })}
+                className="w-full bg-gray-100 rounded-lg px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-gray-300"
+              />
               {form.errorField === 'current' && (
                 <p className="text-xs text-red-600 mt-1">{form.errorMsg}</p>
               )}
@@ -190,19 +183,12 @@ export default function SystemSettings() {
             {/* New Password */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
-              <div className="relative">
-                <input
-                  type={form.showNew ? 'text' : 'password'}
-                  placeholder="Enter new password"
-                  value={form.newPw}
-                  onChange={e => patch({ newPw: e.target.value, errorField: null, errorMsg: '' })}
-                  className="w-full bg-gray-100 rounded-lg px-4 py-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-gray-300"
-                />
-                <button type="button" onClick={() => patch({ showNew: !form.showNew })}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                  {form.showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
+              <PasswordInput
+                placeholder="Enter new password"
+                value={form.newPw}
+                onChange={e => patch({ newPw: e.target.value, errorField: null, errorMsg: '' })}
+                className="w-full bg-gray-100 rounded-lg px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-gray-300"
+              />
               {form.errorField === 'length' && (
                 <p className="text-xs text-red-600 mt-1">Password must be at least 6 characters</p>
               )}
@@ -211,20 +197,13 @@ export default function SystemSettings() {
             {/* Confirm New Password */}
             <div className="mb-6">
               <label className="block text-sm font-medium text-gray-700 mb-1">Confirm New Password</label>
-              <div className="relative">
-                <input
-                  type={form.showConfirm ? 'text' : 'password'}
-                  placeholder="Confirm new password"
-                  value={form.confirmPw}
-                  onChange={e => patch({ confirmPw: e.target.value, errorField: null, errorMsg: '' })}
-                  onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-                  className="w-full bg-gray-100 rounded-lg px-4 py-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-gray-300"
-                />
-                <button type="button" onClick={() => patch({ showConfirm: !form.showConfirm })}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                  {form.showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
+              <PasswordInput
+                placeholder="Confirm new password"
+                value={form.confirmPw}
+                onChange={e => patch({ confirmPw: e.target.value, errorField: null, errorMsg: '' })}
+                onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+                className="w-full bg-gray-100 rounded-lg px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-gray-300"
+              />
               {form.errorField === 'mismatch' && (
                 <p className="text-xs text-red-600 mt-1">Passwords do not match</p>
               )}

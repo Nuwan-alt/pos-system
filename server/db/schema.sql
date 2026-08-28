@@ -7,6 +7,9 @@ USE pos_db;
 -- ─────────────────────────────────────────────────────────────
 -- 1. settings
 -- ─────────────────────────────────────────────────────────────
+-- value stores admin_password/cashier_password base64-encoded (not hashed —
+-- accepted tradeoff for this offline single-machine context), see
+-- server/utils/passwordEncoding.js
 CREATE TABLE IF NOT EXISTS settings (
   id    INT          NOT NULL AUTO_INCREMENT,
   `key` VARCHAR(50)  NOT NULL UNIQUE,
@@ -184,7 +187,8 @@ CREATE TABLE IF NOT EXISTS cash_drawer (
 -- SEED DATA
 -- ─────────────────────────────────────────────────────────────
 
+-- base64 of 'admin123' and 'cash123' respectively
 INSERT INTO settings (`key`, value) VALUES
-  ('admin_password',   'admin123'),
-  ('cashier_password', 'cash123');
+  ('admin_password',   'YWRtaW4xMjM='),
+  ('cashier_password', 'Y2FzaDEyMw==');
 

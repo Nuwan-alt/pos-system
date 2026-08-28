@@ -3,6 +3,7 @@ import { useNavigate, useParams, Link } from 'react-router-dom'
 import { Lock } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { apiFetch } from '../lib/api'
+import PasswordInput from '../components/PasswordInput'
 import loginBg from '../images/login-page.jpg'
 import highlandLogo from '../images/highland.png'
 
@@ -77,8 +78,7 @@ export default function Login() {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Password
             </label>
-            <input
-              type="password"
+            <PasswordInput
               placeholder="Enter your password"
               value={password}
               onChange={e => { setPassword(e.target.value); setError('') }}

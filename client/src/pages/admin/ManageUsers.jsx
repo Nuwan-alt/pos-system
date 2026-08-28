@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, UserPlus, UserX, UserCheck, Trash2, Lock, X } from 'lucide-react'
 import { apiFetch } from '../../lib/api'
+import PasswordInput from '../../components/PasswordInput'
 
 const validateNic    = nic    => /^([0-9]{9}[vVxX]|[0-9]{12})$/.test(nic)
 const validateMobile = mobile => /^(07[0-9]{8})$/.test(mobile)
@@ -310,8 +311,7 @@ export default function ManageUsers() {
             )}
 
             <label className="block text-sm font-medium text-gray-700 mb-1">Enter Admin Password</label>
-            <input
-              type="password"
+            <PasswordInput
               placeholder="Admin password"
               value={password}
               onChange={e => { setPassword(e.target.value); setPasswordError('') }}

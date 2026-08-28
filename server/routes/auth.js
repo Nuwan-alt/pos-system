@@ -1,6 +1,7 @@
 const express = require('express')
 const router = express.Router()
 const db = require('../db/connection')
+const { encodePassword } = require('../utils/passwordEncoding')
 
 // POST /api/auth/login
 // Body: { role: 'admin' | 'cashier', password: string }
@@ -23,7 +24,7 @@ router.post('/login', async (req, res) => {
       [settingKey]
     )
 
-    if (rows.length === 0 || rows[0].value !== password) {
+    if (rows.length === 0 || rows[0].value !== encodePassword(password)) {
       return res.status(401).json({ error: 'Incorrect password.' })
     }
 

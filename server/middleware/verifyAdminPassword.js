@@ -1,4 +1,5 @@
 const db = require('../db/connection')
+const { encodePassword } = require('../utils/passwordEncoding')
 
 module.exports = async function verifyAdminPassword(req, res, next) {
   const { adminPassword } = req.body
@@ -13,7 +14,7 @@ module.exports = async function verifyAdminPassword(req, res, next) {
       ['admin_password']
     )
 
-    if (rows.length === 0 || rows[0].value !== adminPassword) {
+    if (rows.length === 0 || rows[0].value !== encodePassword(adminPassword)) {
       return res.status(403).json({ error: 'Incorrect admin password.' })
     }
 

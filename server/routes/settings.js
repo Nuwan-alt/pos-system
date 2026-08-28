@@ -1,6 +1,7 @@
 const express = require('express')
 const router = express.Router()
 const db = require('../db/connection')
+const { encodePassword } = require('../utils/passwordEncoding')
 
 // PATCH /api/settings/password — change admin or cashier password
 // Body: { role: 'admin' | 'cashier', currentPassword, newPassword }
@@ -25,13 +26,13 @@ router.patch('/password', async (req, res) => {
       [settingKey]
     )
 
-    if (rows.length === 0 || rows[0].value !== currentPassword) {
+    if (rows.length === 0 || rows[0].value !== encodePassword(currentPassword)) {
       return res.status(401).json({ error: 'Incorrect current password.' })
     }
 
     await db.query(
       'UPDATE settings SET value = ? WHERE `key` = ?',
-      [newPassword, settingKey]
+      [encodePassword(newPassword), settingKey]
     )
 
     res.json({ success: true })
