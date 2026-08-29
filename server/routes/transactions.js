@@ -120,4 +120,80 @@ router.post('/', async (req, res) => {
   }
 })
 
+// GET /api/transactions/by-date?date=YYYY-MM-DD&cashierId= — admin Sales Log
+// list. Line items are NOT included here — fetched lazily per row via
+// GET /:id/items below, since a day can hold hundreds of transactions.
+router.get('/by-date', async (req, res) => {
+  const { date, cashierId } = req.query
+
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return res.status(400).json({ error: 'A valid date (YYYY-MM-DD) is required.' })
+  }
+
+  // Sargable range on transaction_time (uses idx_transactions_transaction_time)
+  // rather than DATE(t.transaction_time) = ?, which can't use an index.
+  const params = [date, date]
+  let cashierClause = ''
+  if (cashierId) {
+    cashierClause = 'AND t.cashier_id = ?'
+    params.push(cashierId)
+  }
+
+  try {
+    const [rows] = await db.query(
+      `SELECT t.id, t.transaction_ref, c.name AS cashier_name,
+              t.total, t.transaction_time
+       FROM transactions t
+       LEFT JOIN cashiers c ON c.id = t.cashier_id
+       WHERE t.transaction_time >= ?
+         AND t.transaction_time < DATE_ADD(?, INTERVAL 1 DAY)
+         AND t.is_deleted = 0
+         ${cashierClause}
+       ORDER BY t.transaction_time DESC`,
+      params
+    )
+
+    res.json(rows.map(t => ({
+      id:              t.id,
+      transactionRef:  t.transaction_ref,
+      cashierName:     t.cashier_name || 'Unknown',
+      total:           parseFloat(t.total),
+      transactionTime: t.transaction_time,
+    })))
+  } catch (err) {
+    console.error('GET /transactions/by-date error:', err)
+    res.status(500).json({ error: 'Server error.' })
+  }
+})
+
+// GET /api/transactions/:id/items — a single transaction's line items,
+// lazy-loaded on row expand in the Sales Log. Reads the price/name snapshot
+// stored on transaction_items, never joins back to live products data.
+router.get('/:id/items', async (req, res) => {
+  const id = parseInt(req.params.id, 10)
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ error: 'Invalid transaction id.' })
+  }
+
+  try {
+    const [items] = await db.query(
+      `SELECT product_name, qty, unit_price, subtotal
+       FROM transaction_items
+       WHERE transaction_id = ?
+       ORDER BY id ASC`,
+      [id]
+    )
+
+    res.json(items.map(i => ({
+      name:      i.product_name,
+      qty:       i.qty,
+      unitPrice: parseFloat(i.unit_price),
+      subtotal:  parseFloat(i.subtotal),
+    })))
+  } catch (err) {
+    console.error('GET /transactions/:id/items error:', err)
+    res.status(500).json({ error: 'Server error.' })
+  }
+})
+
 module.exports = router

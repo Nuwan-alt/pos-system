@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   total            DECIMAL(10,2) NOT NULL,
   is_deleted       TINYINT(1)    NOT NULL DEFAULT 0,
   transaction_time DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (id),
+  PRIMARY KEY (id),  KEY idx_transactions_transaction_time (transaction_time),
   CONSTRAINT fk_transactions_cashier
     FOREIGN KEY (cashier_id)
     REFERENCES cashiers(id)

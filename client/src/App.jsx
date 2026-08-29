@@ -11,6 +11,7 @@ import ApproveDeletions from './pages/admin/ApproveDeletions'
 import ManageInventory from './pages/admin/ManageInventory'
 import TransactionReports from './pages/admin/TransactionReports'
 import StockUpdateHistory from './pages/admin/StockUpdateHistory'
+import SalesLog from './pages/admin/SalesLog'
 import CashDrawer from './pages/shared/CashDrawer'
 import CashierTerminal from './pages/cashier/CashierTerminal'
 import CashierTransactions from './pages/cashier/CashierTransactions'
@@ -28,6 +29,7 @@ const router = createBrowserRouter([
   { path: '/admin/reports',   element: <ProtectedRoute role="admin"><TransactionReports /></ProtectedRoute> },
   { path: '/admin/settings',      element: <ProtectedRoute role="admin"><SystemSettings /></ProtectedRoute> },
   { path: '/admin/stock-history', element: <ProtectedRoute role="admin"><StockUpdateHistory /></ProtectedRoute> },
+  { path: '/admin/sales-log',     element: <ProtectedRoute role="admin"><SalesLog /></ProtectedRoute> },
   { path: '/admin/drawer',        element: <ProtectedRoute role="admin"><CashDrawer isAdmin={true}  backRoute="/admin/dashboard" backLabel="Back to Dashboard" /></ProtectedRoute> },
 
   // Cashier routes

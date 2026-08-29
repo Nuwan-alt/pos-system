@@ -1,6 +1,14 @@
 const request = require('supertest')
 const app = require('../server/app')
-const { resetDb, closePool } = require('./helpers/db')
+const { resetDb, closePool, getPool } = require('./helpers/db')
+
+function todayParam() {
+  const d = new Date()
+  const yyyy = d.getFullYear()
+  const mm   = String(d.getMonth() + 1).padStart(2, '0')
+  const dd   = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
 
 beforeEach(async () => {
   await resetDb()
@@ -108,5 +116,102 @@ describe('Transactions API', () => {
       total: 0,
     })
     expect(res.status).toBe(400)
+  })
+
+  describe('GET /api/transactions/by-date (Sales Log)', () => {
+    test("returns today's transaction and excludes an unrelated date", async () => {
+      await request(app).post('/api/transactions').send({
+        cashierId: 1,
+        items: [{ productId: 1, productName: 'Test Product A', qty: 1, unitPrice: 100, subtotal: 100 }],
+        total: 100,
+      })
+
+      const today = await request(app).get(`/api/transactions/by-date?date=${todayParam()}`)
+      expect(today.status).toBe(200)
+      expect(today.body).toHaveLength(1)
+      expect(today.body[0].total).toBe(100)
+      expect(today.body[0].cashierName).toBe('Active Cashier')
+
+      const otherDay = await request(app).get('/api/transactions/by-date?date=2020-01-01')
+      expect(otherDay.status).toBe(200)
+      expect(otherDay.body).toHaveLength(0)
+    })
+
+    test('filters by cashierId and still resolves a disabled cashier\'s name', async () => {
+      await request(app).post('/api/transactions').send({
+        cashierId: 1,
+        items: [{ productId: 1, productName: 'Test Product A', qty: 1, unitPrice: 100, subtotal: 100 }],
+        total: 100,
+      })
+      await request(app).post('/api/transactions').send({
+        cashierId: 2,
+        items: [{ productId: 1, productName: 'Test Product A', qty: 1, unitPrice: 100, subtotal: 100 }],
+        total: 100,
+      })
+
+      const res = await request(app).get(`/api/transactions/by-date?date=${todayParam()}&cashierId=2`)
+      expect(res.status).toBe(200)
+      expect(res.body).toHaveLength(1)
+      expect(res.body[0].cashierName).toBe('Disabled Cashier')
+    })
+
+    test('excludes soft-deleted transactions', async () => {
+      const created = await request(app).post('/api/transactions').send({
+        cashierId: 1,
+        items: [{ productId: 1, productName: 'Test Product A', qty: 1, unitPrice: 100, subtotal: 100 }],
+        total: 100,
+      })
+      await getPool().query('UPDATE transactions SET is_deleted = 1 WHERE id = ?', [created.body.id])
+
+      const res = await request(app).get(`/api/transactions/by-date?date=${todayParam()}`)
+      expect(res.body).toHaveLength(0)
+    })
+
+    test('rejects a malformed date instead of crashing', async () => {
+      const res = await request(app).get('/api/transactions/by-date?date=not-a-date')
+      expect(res.status).toBe(400)
+    })
+
+    test('rejects a missing date', async () => {
+      const res = await request(app).get('/api/transactions/by-date')
+      expect(res.status).toBe(400)
+    })
+  })
+
+  describe('GET /api/transactions/:id/items (Sales Log drill-down)', () => {
+    test("returns the transaction's line-item snapshot, not live product data", async () => {
+      const created = await request(app).post('/api/transactions').send({
+        cashierId: 1,
+        items: [
+          { productId: 1, productName: 'Test Product A', qty: 2, unitPrice: 100, subtotal: 200 },
+          { productId: 2, productName: 'Test Product B', qty: 1, unitPrice: 180, subtotal: 180 },
+        ],
+        total: 380,
+      })
+
+      // Change the product's live price/name after the sale — the drill-down
+      // must still show what was actually charged, not this.
+      await getPool().query(
+        "UPDATE products SET name = 'Renamed Product', price = 999 WHERE id = 1"
+      )
+
+      const res = await request(app).get(`/api/transactions/${created.body.id}/items`)
+      expect(res.status).toBe(200)
+      expect(res.body).toEqual([
+        { name: 'Test Product A', qty: 2, unitPrice: 100, subtotal: 200 },
+        { name: 'Test Product B', qty: 1, unitPrice: 180, subtotal: 180 },
+      ])
+    })
+
+    test('rejects a non-numeric transaction id instead of crashing', async () => {
+      const res = await request(app).get('/api/transactions/abc/items')
+      expect(res.status).toBe(400)
+    })
+
+    test('returns an empty array for a transaction with no items', async () => {
+      const res = await request(app).get('/api/transactions/999999/items')
+      expect(res.status).toBe(200)
+      expect(res.body).toEqual([])
+    })
   })
 })
