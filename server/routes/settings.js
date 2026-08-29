@@ -1,7 +1,28 @@
 const express = require('express')
 const router = express.Router()
 const db = require('../db/connection')
-const { encodePassword } = require('../utils/passwordEncoding')
+const { encodePassword, decodePassword } = require('../utils/passwordEncoding')
+
+// GET /api/settings/password/cashier — reveal the current cashier password.
+// Scoped to cashier only (never admin): the cashier login is already a
+// single password shared across all cashiers (see CLAUDE.md Auth section),
+// so surfacing it here doesn't widen exposure beyond what cashiers already know.
+router.get('/password/cashier', async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      "SELECT value FROM settings WHERE `key` = 'cashier_password'"
+    )
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Cashier password not set.' })
+    }
+
+    res.json({ password: decodePassword(rows[0].value) })
+  } catch (err) {
+    console.error('GET /settings/password/cashier error:', err)
+    res.status(500).json({ error: 'Server error.' })
+  }
+})
 
 // PATCH /api/settings/password — change admin or cashier password
 // Body: { role: 'admin' | 'cashier', currentPassword, newPassword }

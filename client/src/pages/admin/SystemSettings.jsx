@@ -27,14 +27,27 @@ export default function SystemSettings() {
   const [activeModal, setActiveModal] = useState(null)
   const [form,        setForm]        = useState(EMPTY_FORM)
   const [submitting,  setSubmitting]  = useState(false)
+  const [fetchingCurrent, setFetchingCurrent] = useState(false)
 
   function patch(fields) {
     setForm(prev => ({ ...prev, ...fields }))
   }
 
-  function openModal(type) {
+  async function openModal(type) {
     setActiveModal(type)
     setForm(EMPTY_FORM)
+
+    if (type === 'cashier') {
+      setFetchingCurrent(true)
+      try {
+        const { password } = await apiFetch('/api/settings/password/cashier')
+        patch({ currentPw: password })
+      } catch (err) {
+        patch({ errorField: 'server', errorMsg: 'Could not load current cashier password.' })
+      } finally {
+        setFetchingCurrent(false)
+      }
+    }
   }
 
   function closeModal() {
@@ -168,12 +181,16 @@ export default function SystemSettings() {
 
             {/* Current Password */}
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Current Password</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Current Password
+                {activeModal === 'cashier' && <span className="font-normal text-gray-400"> (auto-filled — click the eye icon to view it)</span>}
+              </label>
               <PasswordInput
-                placeholder="Enter current password"
+                placeholder={fetchingCurrent ? 'Loading…' : 'Enter current password'}
                 value={form.currentPw}
-                onChange={e => patch({ currentPw: e.target.value, errorField: null, errorMsg: '' })}
-                className="w-full bg-gray-100 rounded-lg px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-gray-300"
+                readOnly={activeModal === 'cashier'}
+                onChange={e => activeModal !== 'cashier' && patch({ currentPw: e.target.value, errorField: null, errorMsg: '' })}
+                className={`w-full bg-gray-100 rounded-lg px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-gray-300 ${activeModal === 'cashier' ? 'cursor-default' : ''}`}
               />
               {form.errorField === 'current' && (
                 <p className="text-xs text-red-600 mt-1">{form.errorMsg}</p>
@@ -212,7 +229,7 @@ export default function SystemSettings() {
             {/* Submit */}
             <button
               onClick={handleSubmit}
-              disabled={submitting}
+              disabled={submitting || fetchingCurrent}
               className="w-full bg-gray-900 text-white font-bold py-3 rounded-lg hover:bg-gray-700 disabled:opacity-50 transition-colors"
             >
               {submitting ? 'Updating…' : config.buttonLabel}
