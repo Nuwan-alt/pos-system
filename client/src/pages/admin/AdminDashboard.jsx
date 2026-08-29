@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   LogOut, DollarSign, BarChart2, Users, Package,
-  UserCog, Clock, Settings, History, CreditCard,
+  UserCog, Clock, Settings, History, CreditCard, Receipt,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { apiFetch } from '../../lib/api'
@@ -22,6 +22,7 @@ const QUICK_ACTIONS = [
   { icon: BarChart2,   title: 'View Reports',          subtitle: 'Sales summaries and analytics',            route: '/admin/reports' },
   { icon: CreditCard, title: 'Cash Drawer',           subtitle: 'Track daily opening and closing amounts',  route: '/admin/drawer' },
   { icon: History,    title: 'Stock Update History',  subtitle: 'View who updated stock and when',          route: '/admin/stock-history' },
+  { icon: Receipt,    title: 'Sales Log',             subtitle: 'Browse transactions by date and cashier',  route: '/admin/sales-log' },
   { icon: Settings,   title: 'System Settings',       subtitle: 'Configure system preferences',             route: '/admin/settings' },
 ]
 
