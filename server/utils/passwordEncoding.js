@@ -4,4 +4,8 @@ function encodePassword(plain) {
   return Buffer.from(String(plain), 'utf8').toString('base64')
 }
 
-module.exports = { encodePassword }
+function decodePassword(encoded) {
+  return Buffer.from(String(encoded), 'base64').toString('utf8')
+}
+
+module.exports = { encodePassword, decodePassword }

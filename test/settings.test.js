@@ -45,4 +45,19 @@ describe('Settings API', () => {
     const adminLogin = await request(app).post('/api/auth/login').send({ role: 'admin', password: 'admin123' })
     expect(adminLogin.status).toBe(200)
   })
+
+  test('reveals the current cashier password', async () => {
+    const res = await request(app).get('/api/settings/password/cashier')
+    expect(res.status).toBe(200)
+    expect(res.body.password).toBe('cashier123')
+  })
+
+  test('reveal reflects a just-changed cashier password', async () => {
+    await request(app).patch('/api/settings/password').send({
+      role: 'cashier', currentPassword: 'cashier123', newPassword: 'newcash1',
+    })
+    const res = await request(app).get('/api/settings/password/cashier')
+    expect(res.status).toBe(200)
+    expect(res.body.password).toBe('newcash1')
+  })
 })
