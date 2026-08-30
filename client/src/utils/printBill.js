@@ -19,16 +19,26 @@ export function printBill(transaction) {
     <head>
       <title>Receipt</title>
       <style>
+        /* Without this, the browser prints at its default page size (A4/
+           Letter) regardless of the receipt printer's actual roll — the
+           printer then dutifully feeds out that entire page length, mostly
+           blank, for every single bill. "auto" height makes the printed
+           page shrink to fit the receipt's actual content instead.
+           Adjust 80mm below to 58mm if that's this printer's roll width. */
+        @page {
+          size: 80mm auto;
+          margin: 0;
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
           font-family: 'Courier New', Courier, monospace;
-          font-size: 12px;
-          width: 280px;
+          font-size: 13px;
+          width: 76mm;
           margin: 0 auto;
-          padding: 8px;
+          padding: 3mm;
         }
         .center { text-align: center; }
-        .store-name { font-size: 16px; font-weight: bold; text-align: center; }
+        .store-name { font-size: 18px; font-weight: bold; text-align: center; }
         .store-info { text-align: center; margin-bottom: 6px; }
         .meta-row { display: flex; justify-content: space-between; margin: 2px 0; }
         .label { font-weight: bold; }
@@ -37,7 +47,7 @@ export function printBill(transaction) {
         .item-name { font-weight: bold; margin-top: 4px; }
         .item-row { display: flex; justify-content: space-between; margin: 2px 0 4px 0; }
         .summary-row { display: flex; justify-content: space-between; margin: 2px 0; }
-        .summary-row.bold { font-weight: bold; font-size: 13px; }
+        .summary-row.bold { font-weight: bold; font-size: 14px; }
         .footer { text-align: center; margin-top: 8px; font-style: italic; }
       </style>
     </head>

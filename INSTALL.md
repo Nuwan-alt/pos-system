@@ -33,12 +33,30 @@ Open **PowerShell** (Start menu → type "PowerShell") and run:
 
 ```powershell
 cd C:\
-git clone <your-gitlab-repo-url> POS-system
+git clone -b bar-code <your-github-repo-url> POS-system
 cd POS-system
 ```
 
-Replace `<your-gitlab-repo-url>` with your actual GitLab URL, including
+Replace `<your-github-repo-url>` with your actual GitHub URL, including
 credentials/token if it's a private repo.
+
+`-b bar-code` checks out the **bar-code** branch, which adds barcode scanner
+support on top of everything in `main`. We're trying this branch first on the
+shop's hardware since barcode scanner behavior can vary.
+
+**If the barcode scanner doesn't work on this computer**, fall back to `main`
+(everything else — cashier login, inventory, reports, etc. — is identical):
+
+```powershell
+cd C:\POS-system
+git checkout main
+Remove-Item -Recurse -Force client\dist
+```
+
+Then re-run `start-pos.bat` (Part 6) — it rebuilds the frontend automatically
+since `client\dist` is now missing, and starts the server from `main`'s code.
+No database changes are needed either way; the passwords and data you've
+already set up carry over untouched.
 
 ---
 
@@ -137,3 +155,6 @@ these defaults are public knowledge (they're sitting in this exact guide).
 - **`npm install` fails** — check the shop computer actually has internet
   access at that moment; it's the only step in this whole guide that needs
   it (everything after that runs fully offline).
+- **Barcode scanner doesn't work / need to fall back to `main`** — see the
+  callout at the end of Part 2 above (`git checkout main`, delete
+  `client\dist`, re-run `start-pos.bat`).
