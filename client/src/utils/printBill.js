@@ -57,7 +57,7 @@ export function printBill(transaction) {
       </style>
     </head>
     <body>
-      <div class="store-name">SANTHULA MARKETING</div>
+      <div class="store-name">G.C.L TRADERS</div>
       <div class="store-info">Horana Road, Kottawa<br/>076 0121893</div>
       <div class="divider"></div>
       <div class="meta-row"><span><span class="label">DATE</span> &nbsp; ${transaction.date}</span><span><span class="label">TIME</span> &nbsp; ${transaction.time}</span></div>
