@@ -49,6 +49,10 @@ export default function CashDrawer({ isAdmin, backRoute, backLabel }) {
 
   // ── Core state ───────────────────────────────────────────────────────────────
   const [todayDrawer,    setTodayDrawer]    = useState(null)
+  // Today's completed sales total — always present so the close form can show
+  // "Expected Closing" (opening + sales) before the drawer is actually closed.
+  // The server recomputes this itself at close time; this is preview-only.
+  const [todaySales,     setTodaySales]     = useState(0)
   const [historyRecords, setHistoryRecords] = useState([])
   const [cashiers,       setCashiers]       = useState([])
   const [loading,        setLoading]        = useState(true)
@@ -61,10 +65,14 @@ export default function CashDrawer({ isAdmin, backRoute, backLabel }) {
   const [openingAmount,          setOpeningAmount]          = useState('')
   const [openingNote,            setOpeningNote]            = useState('')
 
-  // ── Close-drawer form state ──────────────────────────────────────────────────
+  // ── Close-drawer form state — no amount field: the closing amount is
+  //    always calculated server-side from opening_amount + today's sales.
+  //    Cashiers must re-enter the cashier password to confirm closing;
+  //    admin closing skips this (mirrors admin bypassing verifyAdminPassword).
   const [selectedCloseCashierId, setSelectedCloseCashierId] = useState('')
-  const [closingAmount,          setClosingAmount]          = useState('')
   const [closingNote,            setClosingNote]            = useState('')
+  const [closePassword,          setClosePassword]          = useState('')
+  const [closePasswordError,     setClosePasswordError]     = useState(false)
 
   // ── Reset-modal state ────────────────────────────────────────────────────────
   const [resetModalOpen,      setResetModalOpen]      = useState(false)
@@ -100,6 +108,7 @@ export default function CashDrawer({ isAdmin, backRoute, backLabel }) {
     try {
       const result = await apiFetch('/api/drawer/today')
       setTodayDrawer(result.data)
+      setTodaySales(result.todaySales ?? 0)
     } catch (err) {
       console.error('Failed to fetch today drawer:', err)
     } finally {
@@ -207,6 +216,7 @@ export default function CashDrawer({ isAdmin, backRoute, backLabel }) {
   async function handleCloseDrawer() {
     setSubmitting(true)
     setError(null)
+    setClosePasswordError(false)
     try {
       const cashier = !isAdmin
         ? cashiers.find(c => c.id === parseInt(selectedCloseCashierId))
@@ -214,20 +224,24 @@ export default function CashDrawer({ isAdmin, backRoute, backLabel }) {
       const result = await apiFetch('/api/drawer/close', {
         method: 'POST',
         body: JSON.stringify({
-          closing_amount: parseFloat(closingAmount),
-          note:           closingNote || null,
-          closed_by_role: isAdmin ? 'admin' : 'cashier',
-          closed_by_id:   isAdmin ? 1 : parseInt(selectedCloseCashierId),
-          closed_by_name: isAdmin ? 'Admin' : cashier?.name,
+          note:            closingNote || null,
+          closed_by_role:  isAdmin ? 'admin' : 'cashier',
+          closed_by_id:    isAdmin ? 1 : parseInt(selectedCloseCashierId),
+          closed_by_name:  isAdmin ? 'Admin' : cashier?.name,
+          cashierPassword: isAdmin ? undefined : closePassword,
         }),
       })
       setTodayDrawer(result.data)
-      setClosingAmount('')
       setClosingNote('')
       setSelectedCloseCashierId('')
+      setClosePassword('')
       fetchHistory()
     } catch (err) {
-      showError(err.message)
+      if (!isAdmin && err.message?.toLowerCase().includes('password')) {
+        setClosePasswordError(true)
+      } else {
+        showError(err.message)
+      }
     } finally {
       setSubmitting(false)
     }
@@ -306,11 +320,16 @@ export default function CashDrawer({ isAdmin, backRoute, backLabel }) {
       : parseFloat(openingAmount) > 0
   )
 
+  // No amount to validate — closing is always computed server-side. A
+  // cashier must also select themselves and re-enter the cashier password;
+  // admin has neither requirement.
   const canClose = !submitting && (
-    !isAdmin
-      ? selectedCloseCashierId !== '' && parseFloat(closingAmount) > 0
-      : parseFloat(closingAmount) > 0
+    !isAdmin ? selectedCloseCashierId !== '' && closePassword !== '' : true
   )
+
+  const expectedClosing = todayDrawer
+    ? Math.round((parseFloat(todayDrawer.opening_amount) + todaySales) * 100) / 100
+    : null
 
   const diff = todayDrawer?.closing_amount != null
     ? parseFloat(todayDrawer.closing_amount) - parseFloat(todayDrawer.opening_amount)
@@ -358,7 +377,7 @@ export default function CashDrawer({ isAdmin, backRoute, backLabel }) {
         )}
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className={`grid gap-4 ${isAdmin ? 'grid-cols-3' : 'grid-cols-2'}`}>
 
         {/* Opening */}
         <div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderLeft: '4px solid #3b82f6', borderRadius: '12px', padding: '16px', flex: 1 }}>
@@ -399,27 +418,29 @@ export default function CashDrawer({ isAdmin, backRoute, backLabel }) {
           )}
         </div>
 
-        {/* Difference */}
-        <div style={diff === null
-          ? { backgroundColor: '#f9fafb', border: '1px solid #e5e7eb', borderLeft: '4px solid #d1d5db', borderRadius: '12px', padding: '16px', flex: 1 }
-          : diff >= 0
-            ? { backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderLeft: '4px solid #16a34a', borderRadius: '12px', padding: '16px', flex: 1 }
-            : { backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderLeft: '4px solid #ef4444', borderRadius: '12px', padding: '16px', flex: 1 }
-        }>
-          <div className="flex items-center gap-1.5 mb-2">
-            <TrendingUp size={14} color={diff === null ? '#9ca3af' : diff >= 0 ? '#16a34a' : '#ef4444'} />
-            <span className="text-xs font-semibold" style={{ color: diff === null ? '#6b7280' : diff >= 0 ? '#16a34a' : '#ef4444' }}>Difference</span>
+        {/* Difference — admin only */}
+        {isAdmin && (
+          <div style={diff === null
+            ? { backgroundColor: '#f9fafb', border: '1px solid #e5e7eb', borderLeft: '4px solid #d1d5db', borderRadius: '12px', padding: '16px', flex: 1 }
+            : diff >= 0
+              ? { backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderLeft: '4px solid #16a34a', borderRadius: '12px', padding: '16px', flex: 1 }
+              : { backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderLeft: '4px solid #ef4444', borderRadius: '12px', padding: '16px', flex: 1 }
+          }>
+            <div className="flex items-center gap-1.5 mb-2">
+              <TrendingUp size={14} color={diff === null ? '#9ca3af' : diff >= 0 ? '#16a34a' : '#ef4444'} />
+              <span className="text-xs font-semibold" style={{ color: diff === null ? '#6b7280' : diff >= 0 ? '#16a34a' : '#ef4444' }}>Difference</span>
+            </div>
+            {diff === null ? (
+              <p className="text-2xl font-bold text-gray-200">—</p>
+            ) : diff > 0 ? (
+              <p className="text-lg font-bold text-green-600">+{formatAmount(diff)}</p>
+            ) : diff < 0 ? (
+              <p className="text-lg font-bold text-red-600">-{formatAmount(Math.abs(diff))}</p>
+            ) : (
+              <p className="text-lg font-bold text-gray-500">{formatAmount(0)}</p>
+            )}
           </div>
-          {diff === null ? (
-            <p className="text-2xl font-bold text-gray-200">—</p>
-          ) : diff > 0 ? (
-            <p className="text-lg font-bold text-green-600">+{formatAmount(diff)}</p>
-          ) : diff < 0 ? (
-            <p className="text-lg font-bold text-red-600">-{formatAmount(Math.abs(diff))}</p>
-          ) : (
-            <p className="text-lg font-bold text-gray-500">{formatAmount(0)}</p>
-          )}
-        </div>
+        )}
 
       </div>
     </div>
@@ -602,7 +623,7 @@ export default function CashDrawer({ isAdmin, backRoute, backLabel }) {
                         </div>
                         <div>
                           <p className="font-bold text-gray-900">Close Drawer</p>
-                          <p className="text-sm text-gray-500">Enter the closing cash amount</p>
+                          <p className="text-sm text-gray-500">Closing amount is calculated automatically from today's sales</p>
                         </div>
                       </div>
 
@@ -625,20 +646,22 @@ export default function CashDrawer({ isAdmin, backRoute, backLabel }) {
                         </div>
                       )}
 
-                      <div className="mb-4">
-                        <label className="block text-sm font-bold text-gray-700 mb-1">
-                          Closing Amount (Rs.)
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          placeholder="0.00"
-                          value={closingAmount}
-                          onChange={e => setClosingAmount(e.target.value)}
-                          className="w-full rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-gray-300 no-spinner"
-                          style={{ backgroundColor: '#f3f4f6' }}
-                        />
+                      {/* Expected Closing preview — read-only breakdown of what
+                          the server will compute; no amount is ever entered here. */}
+                      <div className="mb-4 rounded-lg p-4" style={{ backgroundColor: '#f9fafb', border: '1px solid #e5e7eb' }}>
+                        <div className="flex justify-between text-sm text-gray-600 mb-1.5">
+                          <span>Opening Amount</span>
+                          <span>{formatAmount(todayDrawer.opening_amount)}</span>
+                        </div>
+                        <div className="flex justify-between text-sm text-gray-600 mb-1.5">
+                          <span>+ Today's Sales</span>
+                          <span>{formatAmount(todaySales)}</span>
+                        </div>
+                        <hr className="border-gray-200 my-2" />
+                        <div className="flex justify-between text-base font-bold text-gray-900">
+                          <span>Expected Closing</span>
+                          <span>{formatAmount(expectedClosing)}</span>
+                        </div>
                       </div>
 
                       <div className="mb-5">
@@ -655,6 +678,27 @@ export default function CashDrawer({ isAdmin, backRoute, backLabel }) {
                           style={{ backgroundColor: '#f3f4f6' }}
                         />
                       </div>
+
+                      {/* Confirm with the cashier password — admin has full
+                          system access already and doesn't need this. */}
+                      {!isAdmin && (
+                        <div className="mb-5">
+                          <label className="block text-sm font-bold text-gray-700 mb-1">
+                            Confirm Cashier Password
+                          </label>
+                          <PasswordInput
+                            placeholder="Enter cashier password"
+                            value={closePassword}
+                            onChange={e => { setClosePassword(e.target.value); setClosePasswordError(false) }}
+                            onKeyDown={e => e.key === 'Enter' && canClose && handleCloseDrawer()}
+                            className="w-full rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-gray-300"
+                            style={{ backgroundColor: '#f3f4f6' }}
+                          />
+                          {closePasswordError && (
+                            <p className="text-red-500 text-xs mt-1">Incorrect cashier password.</p>
+                          )}
+                        </div>
+                      )}
 
                       {errorBanner}
 
@@ -742,8 +786,8 @@ export default function CashDrawer({ isAdmin, backRoute, backLabel }) {
               {/* History table */}
               <div className="border border-gray-200 rounded-xl overflow-hidden">
 
-                <div className={`px-5 py-3 border-b border-gray-200 grid ${isAdmin ? 'grid-cols-[2.5fr_1fr_1fr_1.5fr_1fr_80px]' : 'grid-cols-[2.5fr_1fr_1fr_1.5fr_1fr]'}`}>
-                  {['Date', 'Opening', 'Closing', 'Difference', 'Status', ...(isAdmin ? ['Actions'] : [])].map(h => (
+                <div className={`px-5 py-3 border-b border-gray-200 grid ${isAdmin ? 'grid-cols-[2.5fr_1fr_1fr_1.5fr_1fr_80px]' : 'grid-cols-[2.5fr_1fr_1fr_1fr]'}`}>
+                  {['Date', 'Opening', 'Closing', ...(isAdmin ? ['Difference'] : []), 'Status', ...(isAdmin ? ['Actions'] : [])].map(h => (
                     <span key={h} className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                       {h}
                     </span>
@@ -762,7 +806,7 @@ export default function CashDrawer({ isAdmin, backRoute, backLabel }) {
                       : null
                     return (
                       <div key={rec.id}>
-                        <div className={`px-5 py-4 items-start grid ${isAdmin ? 'grid-cols-[2.5fr_1fr_1fr_1.5fr_1fr_80px]' : 'grid-cols-[2.5fr_1fr_1fr_1.5fr_1fr]'}`}>
+                        <div className={`px-5 py-4 items-start grid ${isAdmin ? 'grid-cols-[2.5fr_1fr_1fr_1.5fr_1fr_80px]' : 'grid-cols-[2.5fr_1fr_1fr_1fr]'}`}>
 
                           {/* Date */}
                           <div>
@@ -795,21 +839,23 @@ export default function CashDrawer({ isAdmin, backRoute, backLabel }) {
                             }
                           </p>
 
-                          {/* Difference */}
-                          <div className="flex items-center gap-1">
-                            {recDiff === null ? (
-                              <span className="text-gray-300 font-bold text-base">—</span>
-                            ) : recDiff > 0 ? (
-                              <>
-                                <TrendingUp className="w-3.5 h-3.5 text-green-600" />
-                                <span className="text-sm font-bold text-green-600">+{formatAmount(recDiff)}</span>
-                              </>
-                            ) : recDiff < 0 ? (
-                              <span className="text-sm font-bold text-red-600">-{formatAmount(Math.abs(recDiff))}</span>
-                            ) : (
-                              <span className="text-sm font-bold text-gray-500">{formatAmount(0)}</span>
-                            )}
-                          </div>
+                          {/* Difference — admin only */}
+                          {isAdmin && (
+                            <div className="flex items-center gap-1">
+                              {recDiff === null ? (
+                                <span className="text-gray-300 font-bold text-base">—</span>
+                              ) : recDiff > 0 ? (
+                                <>
+                                  <TrendingUp className="w-3.5 h-3.5 text-green-600" />
+                                  <span className="text-sm font-bold text-green-600">+{formatAmount(recDiff)}</span>
+                                </>
+                              ) : recDiff < 0 ? (
+                                <span className="text-sm font-bold text-red-600">-{formatAmount(Math.abs(recDiff))}</span>
+                              ) : (
+                                <span className="text-sm font-bold text-gray-500">{formatAmount(0)}</span>
+                              )}
+                            </div>
+                          )}
 
                           {/* Status */}
                           <div>

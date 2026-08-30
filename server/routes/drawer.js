@@ -2,6 +2,7 @@ const express = require('express')
 const router  = express.Router()
 const db      = require('../db/connection')
 const verifyAdminPassword = require('../middleware/verifyAdminPassword')
+const { encodePassword } = require('../utils/passwordEncoding')
 
 function getLocalDateString() {
   const now = new Date()
@@ -11,6 +12,16 @@ function getLocalDateString() {
   return `${year}-${month}-${day}`
 }
 
+// Total of that day's completed sales — the drawer only ever closes on the
+// same local day it was opened (one row per drawer_date), so this always
+// covers exactly the sales made while the drawer was open.
+async function getSalesTotal(date) {
+  const [[row]] = await db.query(
+    'SELECT COALESCE(SUM(total), 0) AS total FROM transactions WHERE DATE(transaction_time) = ? AND is_deleted = 0',
+    [date]
+  )
+  return parseFloat(row.total)
+}
 
 // GET /api/drawer/today
 router.get('/today', async (req, res) => {
@@ -20,7 +31,10 @@ router.get('/today', async (req, res) => {
       'SELECT * FROM cash_drawer WHERE drawer_date = ?',
       [today]
     )
-    res.json({ success: true, data: rows.length > 0 ? rows[0] : null })
+    // Included regardless of drawer status so the client can preview what
+    // closing would produce before the drawer is actually closed.
+    const todaySales = await getSalesTotal(today)
+    res.json({ success: true, data: rows.length > 0 ? rows[0] : null, todaySales })
   } catch (err) {
     console.error('GET /drawer/today error:', err)
     res.status(500).json({ error: "Failed to fetch today's drawer." })
@@ -80,14 +94,17 @@ router.post('/open', async (req, res) => {
   }
 })
 
-// POST /api/drawer/close
+// POST /api/drawer/close — closing_amount is never taken from the client.
+// It's always opening_amount + that day's completed sales, computed here,
+// same rule as transactions.total / stock_updates.total_cost elsewhere.
+//
+// A cashier closing the drawer must additionally re-enter the (shared)
+// cashier login password as a confirmation step, since closing finalizes
+// the day's cash record — admin closing bypasses this, same as admin
+// bypasses verifyAdminPassword on its own actions.
 router.post('/close', async (req, res) => {
-  const { closing_amount, note, closed_by_role, closed_by_id, closed_by_name } = req.body
+  const { note, closed_by_role, closed_by_id, closed_by_name, cashierPassword } = req.body
 
-  const parsedClosingAmount = parseFloat(closing_amount)
-  if (!Number.isFinite(parsedClosingAmount) || parsedClosingAmount < 0) {
-    return res.status(400).json({ error: 'Valid closing amount is required.' })
-  }
   if (!closed_by_role || !closed_by_id || !closed_by_name) {
     return res.status(400).json({ error: 'Closer information is required.' })
   }
@@ -96,7 +113,7 @@ router.post('/close', async (req, res) => {
     const today = getLocalDateString()
 
     const [existing] = await db.query(
-      "SELECT id FROM cash_drawer WHERE drawer_date = ? AND status = 'open'",
+      "SELECT * FROM cash_drawer WHERE drawer_date = ? AND status = 'open'",
       [today]
     )
     if (existing.length === 0) {
@@ -111,7 +128,21 @@ router.post('/close', async (req, res) => {
       if (cashier.length === 0) {
         return res.status(400).json({ error: 'Cashier not found or inactive.' })
       }
+
+      if (!cashierPassword) {
+        return res.status(400).json({ error: 'Cashier password is required.' })
+      }
+      const [settingsRows] = await db.query(
+        "SELECT value FROM settings WHERE `key` = 'cashier_password'"
+      )
+      if (settingsRows.length === 0 || settingsRows[0].value !== encodePassword(cashierPassword)) {
+        return res.status(403).json({ error: 'Incorrect cashier password.' })
+      }
     }
+
+    const openingAmount = parseFloat(existing[0].opening_amount)
+    const todaySales = await getSalesTotal(today)
+    const closingAmount = Math.round((openingAmount + todaySales) * 100) / 100
 
     await db.query(
       `UPDATE cash_drawer SET
@@ -123,7 +154,7 @@ router.post('/close', async (req, res) => {
          closed_by_name = ?,
          status         = 'closed'
        WHERE drawer_date = ?`,
-      [parsedClosingAmount, note || null,
+      [closingAmount, note || null,
        closed_by_role, closed_by_id, closed_by_name, today]
     )
 
