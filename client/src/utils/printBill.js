@@ -33,7 +33,11 @@ export function printBill(transaction) {
         body {
           font-family: 'Courier New', Courier, monospace;
           font-size: 13px;
-          width: 76mm;
+          /* 72mm, not 76mm — this printer's actual printable width on an
+             80mm roll is narrower than the roll itself (the print head
+             can't reach all the way to either physical edge), so content
+             sized right up to 76mm was getting clipped on the right. */
+          width: 72mm;
           margin: 0 auto;
           padding: 3mm;
         }
@@ -41,6 +45,7 @@ export function printBill(transaction) {
         .store-name { font-size: 18px; font-weight: bold; text-align: center; }
         .store-info { text-align: center; margin-bottom: 6px; }
         .meta-row { display: flex; justify-content: space-between; margin: 2px 0; }
+        .meta-row > span { white-space: nowrap; }
         .label { font-weight: bold; }
         .divider { border-top: 1px dashed #000; margin: 6px 0; }
         .col-header { display: flex; justify-content: space-between; font-weight: bold; }
@@ -66,12 +71,12 @@ export function printBill(transaction) {
       ${itemsHTML}
       <div class="divider"></div>
       <div class="summary-row bold"><span>BILL TOTAL</span><span>${transaction.subtotal.toFixed(2)}</span></div>
-      <div class="summary-row"><span>CASH</span><span>${transaction.amountGiven.toFixed(2)}</span></div>
-      <div class="summary-row"><span>BALANCE</span><span>${transaction.change.toFixed(2)}</span></div>
-      <div class="summary-row"><span>PAYMENT METHOD</span><span>${transaction.paymentMethod || 'Cash'}</span></div>
-      <div class="summary-row"><span>CARD VALUE</span><span>${(transaction.cardValue || 0).toFixed(2)}</span></div>
-      <div class="summary-row"><span>NO OF ITEMS</span><span>${totalItems}</span></div>
-      <div class="summary-row"><span>TOTAL DISCOUNT</span><span>${totalDiscount.toFixed(2)}</span></div>
+      <div class="summary-row"><span class="label">CASH</span><span>${transaction.amountGiven.toFixed(2)}</span></div>
+      <div class="summary-row"><span class="label">BALANCE</span><span>${transaction.change.toFixed(2)}</span></div>
+      <div class="summary-row"><span class="label">PAYMENT METHOD</span><span>${transaction.paymentMethod || 'Cash'}</span></div>
+      <div class="summary-row"><span class="label">CARD VALUE</span><span>${(transaction.cardValue || 0).toFixed(2)}</span></div>
+      <div class="summary-row"><span class="label">NO OF ITEMS</span><span>${totalItems}</span></div>
+      <div class="summary-row"><span class="label">TOTAL DISCOUNT</span><span>${totalDiscount.toFixed(2)}</span></div>
       <div class="divider"></div>
       <div class="footer">Thank you come again..!</div>
     </body>
