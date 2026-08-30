@@ -49,13 +49,13 @@ export default function ApproveDeletions() {
 
       await apiFetch(endpoint, {
         method: 'PATCH',
-        body: JSON.stringify({ adminPassword: password }),
+        body: JSON.stringify({ confirmCode: password }),
       })
 
       setRequests(prev => prev.filter(r => r.deletionRequestId !== deletionRequestId))
       closeModal()
     } catch (err) {
-      setPwError(err.message === 'Incorrect admin password.' ? 'Incorrect password. Try again.' : err.message)
+      setPwError(err.message === 'Incorrect confirmation code.' ? 'Incorrect. Try again.' : err.message)
     } finally {
       setSubmitting(false)
     }
@@ -186,9 +186,9 @@ export default function ApproveDeletions() {
             </p>
             <p className="font-bold text-gray-900 mb-5">{modal.request?.transactionRef}</p>
 
-            <label className="block text-sm font-medium text-gray-700 mb-1">Enter Admin Password</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Enter Confirmation Code</label>
             <PasswordInput
-              placeholder="Admin password"
+              placeholder="Enter 123 to confirm"
               value={password}
               onChange={e => { setPassword(e.target.value); setPwError('') }}
               onKeyDown={e => e.key === 'Enter' && handleConfirm()}

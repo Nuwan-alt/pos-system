@@ -87,7 +87,7 @@ export default function ManageUsers() {
         const newStatus = action === 'enable' ? 'active' : 'disabled'
         await apiFetch(`/api/cashiers/${cashierId}/status`, {
           method: 'PATCH',
-          body: JSON.stringify({ status: newStatus, adminPassword: password }),
+          body: JSON.stringify({ status: newStatus, confirmCode: password }),
         })
         setCashiers(prev => prev.map(c => c.id === cashierId ? { ...c, status: newStatus } : c))
       } else if (action === 'delete') {
@@ -99,12 +99,19 @@ export default function ManageUsers() {
       }
       closeModal()
     } catch (err) {
-      setPasswordError(err.message === 'Incorrect admin password.' ? 'Incorrect password. Try again.' : err.message)
+      const msg = err.message === 'Incorrect admin password.' || err.message === 'Incorrect confirmation code.'
+        ? 'Incorrect. Try again.'
+        : err.message
+      setPasswordError(msg)
     } finally {
       setSubmitting(false)
     }
   }
 
+  // Enable/disable is a routine, easily-undone toggle — a quick "123" confirm
+  // code is enough. Deleting a cashier account is permanent, so it still
+  // requires the real admin password.
+  const isCodeAction = modal.action === 'enable' || modal.action === 'disable'
   const actionLabel = { enable: 'enable', disable: 'disable', delete: 'delete' }[modal.action] ?? ''
   const canCreate   = newName.trim() && newNic.trim() && newMobile.trim()
 
@@ -310,9 +317,11 @@ export default function ManageUsers() {
               </>
             )}
 
-            <label className="block text-sm font-medium text-gray-700 mb-1">Enter Admin Password</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {isCodeAction ? 'Enter Confirmation Code' : 'Enter Admin Password'}
+            </label>
             <PasswordInput
-              placeholder="Admin password"
+              placeholder={isCodeAction ? 'Enter 123 to confirm' : 'Admin password'}
               value={password}
               onChange={e => { setPassword(e.target.value); setPasswordError('') }}
               onKeyDown={e => e.key === 'Enter' && handleConfirm()}

@@ -49,7 +49,7 @@ describe('Deletion requests API', () => {
     const created = await request(app).post('/api/deletion-requests').send({ transactionId: txnId })
     const approve = await request(app)
       .patch(`/api/deletion-requests/${created.body.deletionRequestId}/approve`)
-      .send({ adminPassword: 'admin123' })
+      .send({ confirmCode: '123' })
     expect(approve.status).toBe(200)
 
     const after = await request(app).get('/api/products')
@@ -59,12 +59,12 @@ describe('Deletion requests API', () => {
     expect(txns.body).toHaveLength(0) // soft-deleted, excluded from today's list
   })
 
-  test('admin approval requires the correct admin password', async () => {
+  test('admin approval requires the correct "123" confirmation code', async () => {
     const txnId = await createTransaction()
     const created = await request(app).post('/api/deletion-requests').send({ transactionId: txnId })
     const res = await request(app)
       .patch(`/api/deletion-requests/${created.body.deletionRequestId}/approve`)
-      .send({ adminPassword: 'wrong' })
+      .send({ confirmCode: '999' })
     expect(res.status).toBe(403)
   })
 
@@ -73,10 +73,19 @@ describe('Deletion requests API', () => {
     const created = await request(app).post('/api/deletion-requests').send({ transactionId: txnId })
     const res = await request(app)
       .patch(`/api/deletion-requests/${created.body.deletionRequestId}/reject`)
-      .send({ adminPassword: 'admin123' })
+      .send({ confirmCode: '123' })
     expect(res.status).toBe(200)
 
     const products = await request(app).get('/api/products')
     expect(products.body.find(p => p.id === 1).stock).toBe(47) // unchanged
+  })
+
+  test('admin rejection requires the correct "123" confirmation code', async () => {
+    const txnId = await createTransaction()
+    const created = await request(app).post('/api/deletion-requests').send({ transactionId: txnId })
+    const res = await request(app)
+      .patch(`/api/deletion-requests/${created.body.deletionRequestId}/reject`)
+      .send({ confirmCode: '999' })
+    expect(res.status).toBe(403)
   })
 })

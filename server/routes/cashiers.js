@@ -2,6 +2,7 @@ const express = require('express')
 const router = express.Router()
 const db = require('../db/connection')
 const verifyAdminPassword = require('../middleware/verifyAdminPassword')
+const verifyConfirmCode = require('../middleware/verifyConfirmCode')
 
 function formatDate(datetime) {
   const d = new Date(datetime)
@@ -83,8 +84,8 @@ router.post('/', async (req, res) => {
   }
 })
 
-// PATCH /api/cashiers/:id/status — enable or disable (requires admin password)
-router.patch('/:id/status', verifyAdminPassword, async (req, res) => {
+// PATCH /api/cashiers/:id/status — enable or disable (requires the "123" confirm code)
+router.patch('/:id/status', verifyConfirmCode, async (req, res) => {
   const { status } = req.body
   if (status !== 'active' && status !== 'disabled') {
     return res.status(400).json({ error: 'Status must be active or disabled.' })

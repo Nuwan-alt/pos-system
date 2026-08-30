@@ -52,14 +52,19 @@ describe('Cashiers API', () => {
     expect(res.body.status).toBe('disabled')
   })
 
-  test('PATCH /api/cashiers/:id/status requires an admin password', async () => {
-    const res = await request(app).patch('/api/cashiers/1/status').send({ status: 'disabled' })
-    expect(res.status).toBe(400)
+  test('PATCH /api/cashiers/:id/status requires the "123" confirmation code', async () => {
+    const missing = await request(app).patch('/api/cashiers/1/status').send({ status: 'disabled' })
+    expect(missing.status).toBe(400)
+
+    const wrong = await request(app).patch('/api/cashiers/1/status').send({
+      status: 'disabled', confirmCode: '999',
+    })
+    expect(wrong.status).toBe(403)
   })
 
-  test('PATCH /api/cashiers/:id/status toggles status with the correct password', async () => {
+  test('PATCH /api/cashiers/:id/status toggles status with the correct confirmation code', async () => {
     const res = await request(app).patch('/api/cashiers/1/status').send({
-      status: 'disabled', adminPassword: 'admin123',
+      status: 'disabled', confirmCode: '123',
     })
     expect(res.status).toBe(200)
 

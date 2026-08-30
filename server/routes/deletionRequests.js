@@ -1,7 +1,7 @@
 const express = require('express')
 const router = express.Router()
 const db = require('../db/connection')
-const verifyAdminPassword = require('../middleware/verifyAdminPassword')
+const verifyConfirmCode = require('../middleware/verifyConfirmCode')
 
 // GET /api/deletion-requests/pending — all pending requests (admin view)
 router.get('/pending', async (req, res) => {
@@ -95,8 +95,9 @@ router.delete('/:id', async (req, res) => {
   }
 })
 
-// PATCH /api/deletion-requests/:id/approve — admin approves (atomic: soft-delete + restock)
-router.patch('/:id/approve', verifyAdminPassword, async (req, res) => {
+// PATCH /api/deletion-requests/:id/approve — admin approves (atomic: soft-delete + restock),
+// requires the "123" confirm code
+router.patch('/:id/approve', verifyConfirmCode, async (req, res) => {
   const conn = await db.getConnection()
   try {
     await conn.beginTransaction()
@@ -144,8 +145,8 @@ router.patch('/:id/approve', verifyAdminPassword, async (req, res) => {
   }
 })
 
-// PATCH /api/deletion-requests/:id/reject — admin rejects
-router.patch('/:id/reject', verifyAdminPassword, async (req, res) => {
+// PATCH /api/deletion-requests/:id/reject — admin rejects, requires the "123" confirm code
+router.patch('/:id/reject', verifyConfirmCode, async (req, res) => {
   try {
     const [result] = await db.query(
       "UPDATE deletion_requests SET status = 'rejected', resolved_at = NOW() WHERE id = ? AND status = 'pending'",
