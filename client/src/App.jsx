@@ -36,6 +36,7 @@ const router = createBrowserRouter([
   { path: '/cashier/dashboard',     element: <ProtectedRoute role="cashier"><CashierTerminal /></ProtectedRoute> },
   { path: '/cashier/transactions',  element: <ProtectedRoute role="cashier"><CashierTransactions /></ProtectedRoute> },
   { path: '/cashier/update-stock',  element: <ProtectedRoute role="cashier"><UpdateStock /></ProtectedRoute> },
+  { path: '/cashier/stock-history', element: <ProtectedRoute role="cashier"><StockUpdateHistory /></ProtectedRoute> },
   { path: '/cashier/drawer',        element: <ProtectedRoute role="cashier"><CashDrawer isAdmin={false} backRoute="/cashier/dashboard" backLabel="Back to Cashier" /></ProtectedRoute> },
 ])
 

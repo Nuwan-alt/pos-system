@@ -17,6 +17,8 @@ router.get('/history', async (req, res) => {
         WHEN su.updated_by_role = 'admin'   THEN 'Admin'
       END AS updater_name,
       su.quantity_added,
+      su.buying_price_per_unit,
+      su.total_cost,
       su.note,
       su.updated_at
     FROM stock_updates su
@@ -62,7 +64,7 @@ router.get('/history', async (req, res) => {
 
 // POST /api/stock/adjust — admin add/remove stock with audit log
 router.post('/adjust', async (req, res) => {
-  const { product_id, operation, quantity, note } = req.body
+  const { product_id, operation, quantity, buyingPricePerUnit, note } = req.body
 
   const qty = parseInt(quantity, 10)
   if (!product_id || !operation || !qty || qty <= 0) {
@@ -71,6 +73,21 @@ router.post('/adjust', async (req, res) => {
   if (operation !== 'add' && operation !== 'remove') {
     return res.status(400).json({ error: 'operation must be "add" or "remove".' })
   }
+
+  // A top-up is always a purchase in this shop's workflow — buying price is
+  // required. A removal (damage/shrinkage/correction) is never a purchase,
+  // so cost fields never apply there.
+  let unitCost = null
+  if (operation === 'add') {
+    const rate = parseFloat(buyingPricePerUnit)
+    if (!Number.isFinite(rate) || rate < 0) {
+      return res.status(400).json({ error: 'Buying price per unit is required and must be 0 or greater.' })
+    }
+    unitCost = rate
+  }
+  // Recomputed server-side, never trusted from the client — same rule as
+  // transactions.total.
+  const totalCost = unitCost !== null ? Math.round(qty * unitCost * 100) / 100 : null
 
   const conn = await db.getConnection()
   try {
@@ -104,8 +121,10 @@ router.post('/adjust', async (req, res) => {
       [newStock, product_id]
     )
     await conn.query(
-      "INSERT INTO stock_updates (product_id, updated_by_id, updated_by_role, quantity_added, note) VALUES (?, 1, 'admin', ?, ?)",
-      [product_id, signedQty, note?.trim() || autoNote]
+      `INSERT INTO stock_updates
+         (product_id, updated_by_id, updated_by_role, quantity_added, buying_price_per_unit, total_cost, note)
+       VALUES (?, 1, 'admin', ?, ?, ?, ?)`,
+      [product_id, signedQty, unitCost, totalCost, note?.trim() || autoNote]
     )
 
     await conn.commit()
@@ -121,7 +140,7 @@ router.post('/adjust', async (req, res) => {
 
 // POST /api/stock/update
 router.post('/update', async (req, res) => {
-  const { product_id, updated_by_id, updated_by_role, quantity_added, note = null } = req.body
+  const { product_id, updated_by_id, updated_by_role, quantity_added, buyingPricePerUnit, note = null } = req.body
 
   if (!product_id) {
     return res.status(400).json({ error: 'product_id is required.' })
@@ -135,6 +154,18 @@ router.post('/update', async (req, res) => {
   if (!Number.isInteger(quantity_added) || quantity_added === 0) {
     return res.status(400).json({ error: 'quantity_added must be a non-zero integer.' })
   }
+
+  // A top-up (positive delta) is always a purchase in this shop's workflow —
+  // buying price is required. A removal is never a purchase.
+  let unitCost = null
+  if (quantity_added > 0) {
+    const rate = parseFloat(buyingPricePerUnit)
+    if (!Number.isFinite(rate) || rate < 0) {
+      return res.status(400).json({ error: 'Buying price per unit is required and must be 0 or greater.' })
+    }
+    unitCost = rate
+  }
+  const totalCost = unitCost !== null ? Math.round(quantity_added * unitCost * 100) / 100 : null
 
   // Verify the actor exists and is eligible
   if (updated_by_role === 'cashier') {
@@ -173,9 +204,10 @@ router.post('/update', async (req, res) => {
       [newStock, product_id]
     )
     await conn.query(
-      `INSERT INTO stock_updates (product_id, updated_by_id, updated_by_role, quantity_added, note)
-       VALUES (?, ?, ?, ?, ?)`,
-      [product_id, updated_by_id, updated_by_role, quantity_added, note ?? null]
+      `INSERT INTO stock_updates
+         (product_id, updated_by_id, updated_by_role, quantity_added, buying_price_per_unit, total_cost, note)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [product_id, updated_by_id, updated_by_role, quantity_added, unitCost, totalCost, note ?? null]
     )
 
     await conn.commit()

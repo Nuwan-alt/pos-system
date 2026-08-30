@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, PackagePlus, Search, User, Package, X, Plus, Minus } from 'lucide-react'
+import { ArrowLeft, PackagePlus, Search, User, Package, X, Plus, Minus, History } from 'lucide-react'
 import { usePOS } from '../../context/POSContext'
 import { apiFetch } from '../../lib/api'
 import highlandLogo from '../../images/highland.png'
@@ -20,6 +20,7 @@ export default function UpdateStock() {
   const [errors,          setErrors]          = useState({})
   const [stockSearch,     setStockSearch]     = useState('')
   const [operation,       setOperation]       = useState('add')
+  const [buyingRate,      setBuyingRate]      = useState('')
 
   const wrapperRef = useRef(null)
 
@@ -59,6 +60,11 @@ export default function UpdateStock() {
     if (!selectedCashier)              newErrors.cashier  = 'Please select a cashier'
     if (operation === 'remove' && selectedProduct && qty > selectedProduct.stock)
       newErrors.quantity = `Cannot remove ${qty} units. Only ${selectedProduct.stock} in stock.`
+    if (operation === 'add') {
+      const rate = parseFloat(buyingRate)
+      if (buyingRate === '' || !Number.isFinite(rate) || rate < 0)
+        newErrors.buyingRate = 'Please enter a valid buying price'
+    }
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -67,15 +73,17 @@ export default function UpdateStock() {
     if (!validate()) return
     const qty = parseInt(quantity, 10)
     const signedQty = operation === 'add' ? qty : -qty
+    const rate = parseFloat(buyingRate)
     try {
       await apiFetch('/api/stock/update', {
         method: 'POST',
         body: JSON.stringify({
-          product_id:      selectedProduct.id,
-          updated_by_id:   parseInt(selectedCashier, 10),
-          updated_by_role: 'cashier',
-          quantity_added:  signedQty,
-          note:            operation === 'add'
+          product_id:         selectedProduct.id,
+          updated_by_id:      parseInt(selectedCashier, 10),
+          updated_by_role:    'cashier',
+          quantity_added:     signedQty,
+          buyingPricePerUnit: operation === 'add' ? rate : undefined,
+          note:               operation === 'add'
             ? `Cashier added ${qty} units`
             : `Cashier removed ${qty} units`,
         }),
@@ -87,6 +95,7 @@ export default function UpdateStock() {
       setSearchQuery('')
       setSelectedProduct(null)
       setQuantity('')
+      setBuyingRate('')
       setSelectedCashier('')
       setOperation('add')
       setTimeout(() => setSuccessMsg(''), 3000)
@@ -95,9 +104,14 @@ export default function UpdateStock() {
     }
   }
 
+  const buyingRateNum = parseFloat(buyingRate)
+  const buyingRateValid = Number.isFinite(buyingRateNum) && buyingRateNum >= 0
+  const totalCost = buyingRateValid ? Math.round(parseInt(quantity, 10) * buyingRateNum * 100) / 100 : 0
+
   const isDisabled = !selectedProduct || !quantity || parseInt(quantity, 10) <= 0 ||
     !selectedCashier ||
-    (operation === 'remove' && selectedProduct && parseInt(quantity, 10) > selectedProduct.stock)
+    (operation === 'remove' && selectedProduct && parseInt(quantity, 10) > selectedProduct.stock) ||
+    (operation === 'add' && !buyingRateValid)
 
   function stockColor(p) {
     if (p.stock === 0)                           return 'text-red-600'
@@ -110,19 +124,28 @@ export default function UpdateStock() {
 
       {/* ── HEADER ──────────────────────────────────────────────────── */}
       <div className="px-6 py-5 border-b border-gray-200 shrink-0">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate('/cashier/dashboard')}
-            title="Back to Cashier"
-            className="p-1.5 rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-900 hover:text-white hover:border-gray-900 transition-colors shrink-0"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <img src={highlandLogo} alt="Highland Logo" style={{ width: '48px', height: '48px', objectFit: 'contain', borderRadius: '50%' }} />
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Update Stock</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Add stock quantity to existing products</p>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate('/cashier/dashboard')}
+              title="Back to Cashier"
+              className="p-1.5 rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-900 hover:text-white hover:border-gray-900 transition-colors shrink-0"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <img src={highlandLogo} alt="Highland Logo" style={{ width: '48px', height: '48px', objectFit: 'contain', borderRadius: '50%' }} />
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Update Stock</h1>
+              <p className="text-sm text-gray-500 mt-0.5">Add stock quantity to existing products</p>
+            </div>
           </div>
+          <button
+            onClick={() => navigate('/cashier/stock-history')}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-gray-900 hover:bg-gray-700 transition-colors"
+          >
+            <History className="w-4 h-4" />
+            Stock History
+          </button>
         </div>
       </div>
 
@@ -253,6 +276,29 @@ export default function UpdateStock() {
                 </p>
               )}
             </div>
+
+            {/* Buying Price — only relevant when adding stock (a top-up is
+                always a purchase in this shop's workflow) */}
+            {operation === 'add' && (
+              <div className="mb-4">
+                <label className="block text-sm font-bold text-gray-700 mb-1.5">Buying Price per Unit (Rs.)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={buyingRate}
+                  onChange={e => { setBuyingRate(e.target.value); setErrors(prev => ({ ...prev, buyingRate: undefined })) }}
+                  className="w-full bg-gray-100 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-gray-300 no-spinner"
+                />
+                {errors.buyingRate && <p className="text-xs text-red-600 mt-1">{errors.buyingRate}</p>}
+                {buyingRateValid && quantity && parseInt(quantity, 10) > 0 && (
+                  <p className="text-sm mt-1.5 font-bold text-gray-900">
+                    Total Cost: Rs. {totalCost.toFixed(2)}
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Select Cashier */}
             <div className="mb-5">

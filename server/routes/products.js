@@ -44,6 +44,35 @@ router.get('/', async (req, res) => {
   }
 })
 
+// GET /api/products/costs — current buying cost per product, for the admin
+// inventory table only. Deliberately a SEPARATE endpoint from GET /api/products
+// (rather than a field on it) so cost data is never part of the payload the
+// cashier terminal fetches and holds in memory — cost price must never reach
+// any cashier-facing screen. "Current cost" is the most recent stock_updates
+// row for that product with a non-null buying_price_per_unit — computed on
+// read, not a stored/synced column (see CLAUDE.md's Stock updates note).
+router.get('/costs', async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT p.id AS product_id,
+        (SELECT su.buying_price_per_unit
+         FROM stock_updates su
+         WHERE su.product_id = p.id AND su.buying_price_per_unit IS NOT NULL
+         ORDER BY su.updated_at DESC
+         LIMIT 1) AS current_cost
+      FROM products p
+      WHERE p.is_deleted = 0
+    `)
+    res.json(rows.map(r => ({
+      productId:   r.product_id,
+      currentCost: r.current_cost !== null ? parseFloat(r.current_cost) : null,
+    })))
+  } catch (err) {
+    console.error('GET /products/costs error:', err)
+    res.status(500).json({ error: 'Server error.' })
+  }
+})
+
 // GET /api/products/:id/image/thumb — ~200x200, <30KB, used by cashier cards + admin table
 router.get('/:id/image/thumb', (req, res) => serveProductImage(req, res, 'thumbnail_blob'))
 

@@ -141,6 +141,18 @@ CREATE TABLE IF NOT EXISTS deletion_requests (
 --    Audit log for every stock change (admin "adjust" or cashier
 --    "update"). quantity_added is a signed delta.
 --
+--    buying_price_per_unit / total_cost capture what a top-up (a positive
+--    quantity_added) actually cost — always NULL for a removal, since a
+--    removal is never a purchase. Both are nullable because all stock
+--    history predating this feature has no cost data and must keep
+--    rendering; never backfill either with a guessed value. total_cost is
+--    always qty * buying_price_per_unit recomputed server-side, never a
+--    client-supplied value — same rule as transactions.total.
+--    "Current cost" for a product is deliberately NOT a stored/synced
+--    column here — it's computed on read as the most recent stock_updates
+--    row for that product with a non-null buying_price_per_unit, which
+--    is simpler and can't drift out of sync.
+--
 --    This table (and cash_drawer below) predate schema.sql — they were
 --    created ad hoc before either table existed here (see git history /
 --    CLAUDE.md's old "Known gap" note), so their exact shape was reverse
@@ -152,13 +164,15 @@ CREATE TABLE IF NOT EXISTS deletion_requests (
 --    version of it.
 -- ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS stock_updates (
-  id               INT                     NOT NULL AUTO_INCREMENT,
-  product_id       INT                     NOT NULL,
-  updated_by_id    INT                     NOT NULL,
-  updated_by_role  ENUM('cashier','admin') NOT NULL,
-  quantity_added   INT                     NOT NULL,
-  note             VARCHAR(255)            DEFAULT NULL,
-  updated_at       DATETIME                DEFAULT CURRENT_TIMESTAMP,
+  id                     INT                     NOT NULL AUTO_INCREMENT,
+  product_id             INT                     NOT NULL,
+  updated_by_id          INT                     NOT NULL,
+  updated_by_role        ENUM('cashier','admin') NOT NULL,
+  quantity_added         INT                     NOT NULL,
+  buying_price_per_unit  DECIMAL(10,2)           NULL,
+  total_cost             DECIMAL(10,2)           NULL,
+  note                   VARCHAR(255)            DEFAULT NULL,
+  updated_at             DATETIME                DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   CONSTRAINT fk_stock_updates_product
     FOREIGN KEY (product_id)

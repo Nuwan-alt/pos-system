@@ -2,14 +2,17 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, History, Search, Calendar,
-  User, Shield, PackageSearch, X, Loader2, AlertCircle,
+  User, Shield, PackageSearch, X, Loader2, AlertCircle, AlertTriangle,
 } from 'lucide-react'
 import { apiFetch } from '../../lib/api'
+import { useAuth } from '../../context/AuthContext'
 import highlandLogo from '../../images/highland.png'
 import DatePickerCalendar from '../../components/DatePickerCalendar'
 
 export default function StockUpdateHistory() {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const backRoute = user?.role === 'cashier' ? '/cashier/dashboard' : '/admin/dashboard'
 
   const [allRecords,      setAllRecords]      = useState([])
   const [loading,         setLoading]         = useState(true)
@@ -19,6 +22,7 @@ export default function StockUpdateHistory() {
   const [roleFilter,      setRoleFilter]      = useState('All')
   const [selectedDate,    setSelectedDate]    = useState(null)
   const [calendarOpen,    setCalendarOpen]    = useState(false)
+  const [missingCostOnly, setMissingCostOnly] = useState(false)
 
   const calendarRef   = useRef(null)
   const fetchHistoryRef = useRef(null)
@@ -85,6 +89,16 @@ export default function StockUpdateHistory() {
     setSelectedDate(null)
   }
 
+  // A top-up (positive delta) with no recorded rate is missing cost data —
+  // either it predates this feature, or was never filled in. Removals never
+  // carry cost data by design, so they're never "missing" it.
+  function isMissingCost(record) {
+    return record.quantity_added > 0 && record.buying_price_per_unit === null
+  }
+
+  const visibleRecords = missingCostOnly ? allRecords.filter(isMissingCost) : allRecords
+  const missingCostCount = allRecords.filter(isMissingCost).length
+
   return (
     <div className="min-h-screen bg-white flex flex-col">
 
@@ -93,7 +107,7 @@ export default function StockUpdateHistory() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => navigate('/admin/dashboard')}
+              onClick={() => navigate(backRoute)}
               title="Back to Dashboard"
               className="p-1.5 rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-900 hover:text-white hover:border-gray-900 transition-colors shrink-0"
             >
@@ -111,7 +125,7 @@ export default function StockUpdateHistory() {
             </div>
           </div>
           <div className="text-right">
-            <p className="text-3xl font-bold text-gray-900">{allRecords.length}</p>
+            <p className="text-3xl font-bold text-gray-900">{visibleRecords.length}</p>
             <p className="text-sm text-gray-500">records</p>
           </div>
         </div>
@@ -119,7 +133,7 @@ export default function StockUpdateHistory() {
 
       {/* ── BODY ────────────────────────────────────────────────────── */}
       <div className="flex-1 p-6 space-y-6">
-        <div style={{ maxWidth: '900px', margin: '0 auto' }}>
+        <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
 
         {/* ── FILTER PANEL ──────────────────────────────────────────── */}
         <div className="border border-gray-200 rounded-xl p-5">
@@ -201,6 +215,20 @@ export default function StockUpdateHistory() {
               })}
             </p>
           )}
+
+          {/* Missing cost data filter */}
+          {missingCostCount > 0 && (
+            <label className="mt-3 flex items-center gap-2 text-sm text-amber-700 cursor-pointer w-fit">
+              <input
+                type="checkbox"
+                checked={missingCostOnly}
+                onChange={e => setMissingCostOnly(e.target.checked)}
+                className="accent-amber-600"
+              />
+              <AlertTriangle className="w-3.5 h-3.5" />
+              Show only records missing cost data ({missingCostCount})
+            </label>
+          )}
         </div>
 
         {/* ── RECORDS TABLE ─────────────────────────────────────────── */}
@@ -208,10 +236,12 @@ export default function StockUpdateHistory() {
 
           {/* Column headers */}
           <div className="flex px-5 py-3 border-b border-gray-200">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide" style={{ width: '30%' }}>Product</span>
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide" style={{ width: '25%' }}>Updated By</span>
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide" style={{ width: '30%' }}>Date & Time</span>
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide" style={{ width: '15%', textAlign: 'right' }}>Qty Changed</span>
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide" style={{ width: '19%' }}>Product</span>
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide" style={{ width: '17%' }}>Updated By</span>
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide" style={{ width: '15%' }}>Date & Time</span>
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide" style={{ width: '13%', textAlign: 'right' }}>Qty Changed</span>
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide" style={{ width: '17%', textAlign: 'right' }}>Price/Unit</span>
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide" style={{ width: '19%', textAlign: 'right' }}>Total Cost</span>
           </div>
 
           {loading ? (
@@ -230,22 +260,29 @@ export default function StockUpdateHistory() {
                 Retry
               </button>
             </div>
-          ) : allRecords.length === 0 ? (
+          ) : visibleRecords.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 gap-3">
               <PackageSearch className="w-12 h-12 text-gray-300" />
               <p className="font-bold text-gray-500">No stock updates found</p>
               <p className="text-sm text-gray-400">Try adjusting your filters</p>
             </div>
           ) : (
-            allRecords.map((record, i) => (
+            visibleRecords.map((record, i) => (
               <div key={record.id}>
                 <div className="flex px-5 py-4 items-center">
 
                   {/* Product */}
-                  <span className="font-bold text-gray-900 text-base" style={{ width: '25%' }}>{record.product_name}</span>
+                  <div style={{ width: '19%', minWidth: 0 }} className="flex items-center gap-1.5">
+                    <span className="font-bold text-gray-900 text-base" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {record.product_name}
+                    </span>
+                    {isMissingCost(record) && (
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" title="Missing cost data" />
+                    )}
+                  </div>
 
                   {/* Updated By */}
-                  <div style={{ width: '25%', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ width: '17%', minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{
                       display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '3px',
                       width: '64px', flexShrink: 0,
@@ -257,32 +294,48 @@ export default function StockUpdateHistory() {
                       {record.updated_by_role === 'admin' ? <Shield size={11} /> : <User size={11} />}
                       {record.updated_by_role === 'admin' ? 'Admin' : 'Cashier'}
                     </span>
-                    <span style={{ fontSize: '13px', color: '#374151', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: '13px', color: '#374151', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
                       {record.updater_name}
                     </span>
                   </div>
 
-                  {/* Date & Time */}
-                  <div style={{ width: '30%', display: 'flex', alignItems: 'center', fontSize: '13px', color: '#374151', whiteSpace: 'nowrap' }}>
-                    <span style={{ display: 'inline-block', width: '148px', flexShrink: 0 }}>
+                  {/* Date & Time — stacked, not inline, so it can't overflow into
+                      the next column at this narrower width */}
+                  <div style={{ width: '15%', minWidth: 0, fontSize: '13px', color: '#374151' }}>
+                    <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {new Date(record.updated_at).toLocaleDateString('en-US', {
                         weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
                       })}
-                    </span>
-                    <span style={{ color: '#9ca3af', margin: '0 6px' }}>•</span>
-                    {new Date(record.updated_at).toLocaleTimeString('en-US', {
-                      hour: '2-digit', minute: '2-digit',
-                    })}
+                    </div>
+                    <div style={{ color: '#9ca3af', fontSize: '12px' }}>
+                      {new Date(record.updated_at).toLocaleTimeString('en-US', {
+                        hour: '2-digit', minute: '2-digit',
+                      })}
+                    </div>
                   </div>
 
                   {/* Qty Changed */}
                   <p className={`text-base font-bold text-right ${
                     record.quantity_added >= 0 ? 'text-green-600' : 'text-red-600'
-                  }`} style={{ width: '15%' }}>
+                  }`} style={{ width: '13%', minWidth: 0, whiteSpace: 'nowrap' }}>
                     {record.quantity_added > 0 ? `+${record.quantity_added}` : record.quantity_added} units
                   </p>
+
+                  {/* Buying Price per Unit — "—" for removals and historical rows with no cost data, never Rs. 0.00 */}
+                  <p className="text-sm text-right text-gray-700" style={{ width: '17%', minWidth: 0, whiteSpace: 'nowrap' }}>
+                    {record.buying_price_per_unit !== null
+                      ? `Rs. ${parseFloat(record.buying_price_per_unit).toFixed(2)}`
+                      : '—'}
+                  </p>
+
+                  {/* Total Cost */}
+                  <p className="text-sm font-bold text-right text-gray-900" style={{ width: '19%', minWidth: 0, whiteSpace: 'nowrap' }}>
+                    {record.total_cost !== null
+                      ? `Rs. ${parseFloat(record.total_cost).toFixed(2)}`
+                      : '—'}
+                  </p>
                 </div>
-                {i < allRecords.length - 1 && <hr className="border-gray-100" />}
+                {i < visibleRecords.length - 1 && <hr className="border-gray-100" />}
               </div>
             ))
           )}

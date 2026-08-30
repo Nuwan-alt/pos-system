@@ -72,6 +72,7 @@ export default function ManageInventory() {
   const [stockModal,   setStockModal]   = useState({ open: false, product: null })
   const [stockOp,      setStockOp]      = useState('add')
   const [stockQty,     setStockQty]     = useState('')
+  const [stockRate,    setStockRate]    = useState('')
   const [stockNote,    setStockNote]    = useState('')
   const [stockErr,     setStockErr]     = useState('')
   const [stockBusy,    setStockBusy]    = useState(false)
@@ -91,8 +92,11 @@ export default function ManageInventory() {
 
   function fetchProducts() {
     setLoadError('')
-    apiFetch('/api/products')
-      .then(data => setProducts(data))
+    Promise.all([apiFetch('/api/products'), apiFetch('/api/products/costs')])
+      .then(([products, costs]) => {
+        const costById = new Map(costs.map(c => [c.productId, c.currentCost]))
+        setProducts(products.map(p => ({ ...p, currentCost: costById.get(p.id) ?? null })))
+      })
       .catch(err => setLoadError(err.message || 'Failed to load products.'))
       .finally(() => setLoading(false))
   }
@@ -194,7 +198,8 @@ export default function ManageInventory() {
         method: 'POST',
         body: buildFormData(),
       })
-      setProducts(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
+      // A brand-new product has no purchase history yet.
+      setProducts(prev => [...prev, { ...created, currentCost: null }].sort((a, b) => a.name.localeCompare(b.name)))
       resetForm()
       setSuccessMsg('Product added successfully!')
       setTimeout(() => setSuccessMsg(''), 2000)
@@ -214,7 +219,10 @@ export default function ManageInventory() {
         body: buildFormData(),
       })
       setProducts(prev =>
-        prev.map(p => p.id === editingId ? updated : p)
+        // Editing name/price/discount doesn't touch purchase history — carry
+        // the already-known currentCost forward instead of losing it, since
+        // the PUT response doesn't include it (see GET /api/products/costs).
+        prev.map(p => p.id === editingId ? { ...updated, currentCost: p.currentCost } : p)
             .sort((a, b) => a.name.localeCompare(b.name))
       )
       resetForm()
@@ -246,6 +254,7 @@ export default function ManageInventory() {
     setStockModal({ open: true, product })
     setStockOp('add')
     setStockQty('')
+    setStockRate('')
     setStockNote('')
     setStockErr('')
   }
@@ -260,20 +269,25 @@ export default function ManageInventory() {
     const qty = parseInt(stockQty, 10)
     if (!qty || qty <= 0) return
     if (stockOp === 'remove' && qty > stockModal.product.stock) return
+    const rate = parseFloat(stockRate)
+    if (stockOp === 'add' && (!Number.isFinite(rate) || rate < 0)) return
     setStockBusy(true)
     setStockErr('')
     try {
       const result = await apiFetch('/api/stock/adjust', {
         method: 'POST',
         body: JSON.stringify({
-          product_id: stockModal.product.id,
-          operation:  stockOp,
-          quantity:   qty,
-          note:       stockNote.trim() || null,
+          product_id:         stockModal.product.id,
+          operation:          stockOp,
+          quantity:           qty,
+          buyingPricePerUnit: stockOp === 'add' ? rate : undefined,
+          note:               stockNote.trim() || null,
         }),
       })
       setProducts(prev =>
-        prev.map(p => p.id === stockModal.product.id ? { ...p, stock: result.new_stock } : p)
+        prev.map(p => p.id === stockModal.product.id
+          ? { ...p, stock: result.new_stock, ...(stockOp === 'add' ? { currentCost: rate } : {}) }
+          : p)
       )
       setStockSuccess(stockModal.product.id)
       setTimeout(() => setStockSuccess(null), 2000)
@@ -294,7 +308,7 @@ export default function ManageInventory() {
     fd.append('barcode', generateMimicBarcode())
     try {
       const updated = await apiFetch(`/api/products/${product.id}`, { method: 'PUT', body: fd })
-      setProducts(prev => prev.map(p => p.id === product.id ? updated : p))
+      setProducts(prev => prev.map(p => p.id === product.id ? { ...updated, currentCost: p.currentCost } : p))
     } catch (err) {
       window.alert(err.message || 'Failed to generate barcode.')
     }
@@ -336,7 +350,11 @@ export default function ManageInventory() {
   const currentStk   = stockModal.product?.stock ?? 0
   const previewStock = stockOp === 'add' ? currentStk + previewQty : currentStk - previewQty
   const isOverRemove = stockOp === 'remove' && previewQty > currentStk
-  const canConfirm   = previewQty > 0 && !isOverRemove && !stockBusy
+  const previewRate  = parseFloat(stockRate)
+  const rateValid    = Number.isFinite(previewRate) && previewRate >= 0
+  const previewTotalCost = rateValid ? Math.round(previewQty * previewRate * 100) / 100 : 0
+  const canConfirm   = previewQty > 0 && !isOverRemove && !stockBusy &&
+    (stockOp !== 'add' || rateValid)
 
   return (
     <div className="h-screen flex flex-col bg-white">
@@ -513,12 +531,13 @@ export default function ManageInventory() {
               </div>
             </div>
 
-            <div className="grid grid-cols-[36px_2fr_1fr_1fr_1fr_1fr_120px] gap-3 px-5 py-2 text-xs font-semibold text-gray-500 shrink-0 border-b border-gray-100">
+            <div className="grid grid-cols-[36px_2fr_1fr_1fr_1fr_1fr_1fr_120px] gap-3 px-5 py-2 text-xs font-semibold text-gray-500 shrink-0 border-b border-gray-100">
               <span></span>
               <span>Product Name</span>
+              <span>Buying Price</span>
               <span>Price</span>
               <span>Discount (Rs.)</span>
-              <span>Final Price</span>
+              <span>Selling Price</span>
               <span>Stock</span>
               <span className="text-right">Actions</span>
             </div>
@@ -550,11 +569,14 @@ export default function ManageInventory() {
                   const fp        = getEffectivePrice(product.price, product.discountAmount).toFixed(2)
                   return (
                     <div key={product.id}
-                      className={`grid grid-cols-[36px_2fr_1fr_1fr_1fr_1fr_120px] gap-3 px-5 py-3 items-center border-b border-gray-50 text-sm ${
+                      className={`grid grid-cols-[36px_2fr_1fr_1fr_1fr_1fr_1fr_120px] gap-3 px-5 py-3 items-center border-b border-gray-50 text-sm ${
                         isEditing ? 'bg-gray-100' : isLow ? 'bg-[#fff5f5]' : 'bg-white'
                       }`}>
                       <InventoryThumbnail product={product} />
                       <span className="font-semibold text-gray-900 truncate">{product.name}</span>
+                      <span className="text-gray-600">
+                        {product.currentCost !== null ? `Rs. ${product.currentCost.toFixed(2)}` : '—'}
+                      </span>
                       <span className="text-gray-600">Rs. {product.price.toFixed(2)}</span>
                       <span className="text-gray-600">Rs. {product.discountAmount.toFixed(2)}</span>
                       <span className="font-bold text-gray-900">Rs. {fp}</span>
@@ -673,6 +695,32 @@ export default function ManageInventory() {
                 )
               )}
             </div>
+
+            {stockOp === 'add' && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Buying Price per Unit (Rs.)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={stockRate}
+                  onChange={e => setStockRate(e.target.value)}
+                  className="w-full bg-gray-100 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-gray-300 no-spinner"
+                />
+                {previewQty > 0 && stockRate !== '' && (
+                  rateValid ? (
+                    <p className="text-sm mt-1.5 font-bold text-gray-900">
+                      Total Cost: Rs. {previewTotalCost.toFixed(2)}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-red-600 mt-1.5 font-medium">
+                      Buying price must be 0 or greater
+                    </p>
+                  )
+                )}
+              </div>
+            )}
 
             <div className="mb-5">
               <label className="block text-sm font-medium text-gray-700 mb-1">Note (optional)</label>
