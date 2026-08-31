@@ -580,7 +580,7 @@ export default function ManageInventory() {
                         isEditing ? 'bg-gray-100' : isLow ? 'bg-[#fff5f5]' : 'bg-white'
                       }`}>
                       <InventoryThumbnail product={product} />
-                      <span className="font-semibold text-gray-900 truncate">{product.name}</span>
+                      <span className="font-semibold text-gray-900 truncate" title={product.name}>{product.name}</span>
                       <span className="text-gray-600">
                         {product.currentCost !== null ? `Rs. ${product.currentCost.toFixed(2)}` : '—'}
                       </span>
