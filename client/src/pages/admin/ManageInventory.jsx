@@ -335,12 +335,12 @@ export default function ManageInventory() {
     try {
       await apiFetch(`/api/products/${deleteModal.productId}`, {
         method: 'DELETE',
-        body: JSON.stringify({ adminPassword: password }),
+        body: JSON.stringify({ confirmCode: password }),
       })
       setProducts(prev => prev.filter(p => p.id !== deleteModal.productId))
       closeDelete()
     } catch (err) {
-      setPwError(err.message === 'Incorrect admin password.' ? 'Incorrect password. Try again.' : err.message)
+      setPwError(err.message === 'Incorrect confirmation code.' ? 'Incorrect. Try again.' : err.message)
     } finally {
       setSubmitting(false)
     }
@@ -775,8 +775,8 @@ export default function ManageInventory() {
             <p className="text-sm text-gray-600 mb-1">You are about to delete:</p>
             <p className="font-bold text-gray-900 mb-5">{deleteModal.productName}</p>
 
-            <label className="block text-sm font-medium text-gray-700 mb-1">Enter Admin Password</label>
-            <PasswordInput placeholder="Admin password" value={password}
+            <label className="block text-sm font-medium text-gray-700 mb-1">Enter Confirmation Code</label>
+            <PasswordInput placeholder="Enter 123 to confirm" value={password}
               onChange={e => { setPassword(e.target.value); setPwError('') }}
               onKeyDown={e => e.key === 'Enter' && handleDelete()}
               className="w-full bg-gray-100 rounded-lg px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-gray-300" />

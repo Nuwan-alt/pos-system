@@ -1,7 +1,7 @@
 const express = require('express')
 const router = express.Router()
 const db = require('../db/connection')
-const verifyAdminPassword = require('../middleware/verifyAdminPassword')
+const verifyConfirmCode = require('../middleware/verifyConfirmCode')
 const { validateDiscountAmount } = require('../utils/pricing')
 const { validateBarcode } = require('../utils/barcode')
 const { uploadSingleImage } = require('../middleware/upload')
@@ -249,12 +249,16 @@ router.put('/:id', uploadSingleImage('image'), async (req, res) => {
   }
 })
 
-// DELETE /api/products/:id — soft delete (requires admin password); also
-// clears image data, since a soft-deleted product is never shown again.
-router.delete('/:id', verifyAdminPassword, async (req, res) => {
+// DELETE /api/products/:id — soft delete (requires the "123" confirm code,
+// not the real admin password — see verifyConfirmCode.js); also clears
+// image data, since a soft-deleted product is never shown again.
+// barcode is cleared too — it carries a DB-level UNIQUE constraint (NULLs
+// exempt), so leaving it set would permanently strand that barcode on the
+// deleted row and block it from ever being assigned to another product.
+router.delete('/:id', verifyConfirmCode, async (req, res) => {
   try {
     const [result] = await db.query(
-      'UPDATE products SET is_deleted = 1, thumbnail_blob = NULL, full_blob = NULL, image_mime = NULL, has_image = 0 WHERE id = ?',
+      'UPDATE products SET is_deleted = 1, barcode = NULL, thumbnail_blob = NULL, full_blob = NULL, image_mime = NULL, has_image = 0 WHERE id = ?',
       [req.params.id]
     )
     if (result.affectedRows === 0) {

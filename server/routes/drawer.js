@@ -2,6 +2,7 @@ const express = require('express')
 const router  = express.Router()
 const db      = require('../db/connection')
 const verifyAdminPassword = require('../middleware/verifyAdminPassword')
+const verifyConfirmCode = require('../middleware/verifyConfirmCode')
 const { encodePassword } = require('../utils/passwordEncoding')
 
 function getLocalDateString() {
@@ -12,9 +13,10 @@ function getLocalDateString() {
   return `${year}-${month}-${day}`
 }
 
-// Total of that day's completed sales — the drawer only ever closes on the
-// same local day it was opened (one row per drawer_date), so this always
-// covers exactly the sales made while the drawer was open.
+// Total of the given calendar day's completed sales. Used only by GET
+// /today's same-day preview — POST /close computes its own total in SQL
+// against the actual open drawer's drawer_date (see below), since "today"
+// and the open drawer's date can diverge if it's closed after midnight.
 async function getSalesTotal(date) {
   const [[row]] = await db.query(
     'SELECT COALESCE(SUM(total), 0) AS total FROM transactions WHERE DATE(transaction_time) = ? AND is_deleted = 0',
@@ -56,12 +58,20 @@ router.post('/open', async (req, res) => {
   try {
     const today = getLocalDateString()
 
-    const [existing] = await db.query(
+    const [todayRow] = await db.query(
       'SELECT id FROM cash_drawer WHERE drawer_date = ?',
       [today]
     )
-    if (existing.length > 0) {
+    if (todayRow.length > 0) {
       return res.status(400).json({ error: 'Drawer has already been opened today.' })
+    }
+
+    // Also block on any still-open drawer from a previous day (e.g. never
+    // closed before midnight) — otherwise two drawers could be open at
+    // once and the older one's sales would never get closed out.
+    const [openRow] = await db.query("SELECT id FROM cash_drawer WHERE status = 'open' LIMIT 1")
+    if (openRow.length > 0) {
+      return res.status(400).json({ error: "A previous day's drawer is still open. Please close it before opening a new one." })
     }
 
     if (opened_by_role === 'cashier') {
@@ -110,15 +120,25 @@ router.post('/close', async (req, res) => {
   }
 
   try {
-    const today = getLocalDateString()
-
+    // Find whichever drawer is currently open — not necessarily one dated
+    // "today": if it was opened before midnight and is only being closed
+    // now, drawer_date is still yesterday's date. The sales subquery is
+    // computed here against cd.drawer_date directly, in SQL, so the total
+    // is always scoped to the drawer's own opened day regardless of what
+    // day it's actually closed on, and never depends on reformatting a
+    // DATE value back through JS/the driver.
     const [existing] = await db.query(
-      "SELECT * FROM cash_drawer WHERE drawer_date = ? AND status = 'open'",
-      [today]
+      `SELECT cd.*,
+         (SELECT COALESCE(SUM(t.total), 0) FROM transactions t
+          WHERE DATE(t.transaction_time) = cd.drawer_date AND t.is_deleted = 0) AS today_sales
+       FROM cash_drawer cd
+       WHERE cd.status = 'open'
+       LIMIT 1`
     )
     if (existing.length === 0) {
-      return res.status(400).json({ error: 'No open drawer found for today.' })
+      return res.status(400).json({ error: 'No open drawer found.' })
     }
+    const drawer = existing[0]
 
     if (closed_by_role === 'cashier') {
       const [cashier] = await db.query(
@@ -140,8 +160,8 @@ router.post('/close', async (req, res) => {
       }
     }
 
-    const openingAmount = parseFloat(existing[0].opening_amount)
-    const todaySales = await getSalesTotal(today)
+    const openingAmount = parseFloat(drawer.opening_amount)
+    const todaySales = parseFloat(drawer.today_sales)
     const closingAmount = Math.round((openingAmount + todaySales) * 100) / 100
 
     await db.query(
@@ -153,14 +173,14 @@ router.post('/close', async (req, res) => {
          closed_by_id   = ?,
          closed_by_name = ?,
          status         = 'closed'
-       WHERE drawer_date = ?`,
+       WHERE id = ?`,
       [closingAmount, note || null,
-       closed_by_role, closed_by_id, closed_by_name, today]
+       closed_by_role, closed_by_id, closed_by_name, drawer.id]
     )
 
     const [updated] = await db.query(
-      'SELECT * FROM cash_drawer WHERE drawer_date = ?',
-      [today]
+      'SELECT * FROM cash_drawer WHERE id = ?',
+      [drawer.id]
     )
     res.json({ success: true, data: updated[0] })
   } catch (err) {
@@ -169,8 +189,9 @@ router.post('/close', async (req, res) => {
   }
 })
 
-// POST /api/drawer/reset — admin only (verifyAdminPassword reads req.body.adminPassword)
-router.post('/reset', verifyAdminPassword, async (req, res) => {
+// POST /api/drawer/reset — admin only, gated by the "123" confirm code
+// rather than the real admin password (see verifyConfirmCode.js)
+router.post('/reset', verifyConfirmCode, async (req, res) => {
   try {
     const today = getLocalDateString()
 

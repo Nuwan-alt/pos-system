@@ -100,14 +100,14 @@ describe('Cash drawer API', () => {
     expect(res.body.todaySales).toBe(300)
   })
 
-  test("reset requires the correct admin password and removes today's record", async () => {
+  test("reset requires the correct confirm code and removes today's record", async () => {
     await request(app).post('/api/drawer/open').send({
       opening_amount: 1000, opened_by_role: 'admin', opened_by_id: 1, opened_by_name: 'Admin',
     })
-    const bad = await request(app).post('/api/drawer/reset').send({ adminPassword: 'wrong' })
+    const bad = await request(app).post('/api/drawer/reset').send({ confirmCode: 'wrong' })
     expect(bad.status).toBe(403)
 
-    const ok = await request(app).post('/api/drawer/reset').send({ adminPassword: 'admin123' })
+    const ok = await request(app).post('/api/drawer/reset').send({ confirmCode: '123' })
     expect(ok.status).toBe(200)
 
     const today = await request(app).get('/api/drawer/today')

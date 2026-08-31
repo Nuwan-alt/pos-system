@@ -100,15 +100,28 @@ describe('Products API', () => {
     expect(res.status).toBe(404)
   })
 
-  test('DELETE /api/products/:id requires the correct admin password and soft-deletes', async () => {
-    const bad = await request(app).delete('/api/products/1').send({ adminPassword: 'wrong' })
+  test('DELETE /api/products/:id requires the correct confirm code and soft-deletes', async () => {
+    const bad = await request(app).delete('/api/products/1').send({ confirmCode: 'wrong' })
     expect(bad.status).toBe(403)
 
-    const ok = await request(app).delete('/api/products/1').send({ adminPassword: 'admin123' })
+    const ok = await request(app).delete('/api/products/1').send({ confirmCode: '123' })
     expect(ok.status).toBe(200)
 
     const list = await request(app).get('/api/products')
     expect(list.body.find(p => p.id === 1)).toBeUndefined()
+  })
+
+  test('FIXED: deleting a product frees its barcode for reuse on a new product', async () => {
+    await request(app).put('/api/products/1').send({ name: 'Test Product A', price: 100, barcode: '12345678' })
+
+    const del = await request(app).delete('/api/products/1').send({ confirmCode: '123' })
+    expect(del.status).toBe(200)
+
+    const res = await request(app)
+      .post('/api/products')
+      .send({ name: 'New Product', price: 50, barcode: '12345678' })
+    expect(res.status).toBe(201)
+    expect(res.body.barcode).toBe('12345678')
   })
 })
 
@@ -269,7 +282,7 @@ describe('Product images', () => {
       .field('price', '10')
       .attach('image', VALID_PNG, 'test.png')
 
-    await request(app).delete(`/api/products/${created.body.id}`).send({ adminPassword: 'admin123' })
+    await request(app).delete(`/api/products/${created.body.id}`).send({ confirmCode: '123' })
 
     const [rows] = await getPool().query(
       'SELECT has_image, thumbnail_blob, full_blob FROM products WHERE id = ?',

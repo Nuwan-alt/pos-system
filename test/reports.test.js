@@ -45,7 +45,7 @@ describe('Reports API', () => {
     const dr = await request(app).post('/api/deletion-requests').send({ transactionId: txn.body.id })
     await request(app)
       .patch(`/api/deletion-requests/${dr.body.deletionRequestId}/approve`)
-      .send({ adminPassword: 'admin123' })
+      .send({ confirmCode: '123' })
 
     const res = await request(app).get('/api/reports?period=today')
     expect(res.body.totalTransactions).toBe(0)

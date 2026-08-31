@@ -299,7 +299,7 @@ export default function CashDrawer({ isAdmin, backRoute, backLabel }) {
     try {
       await apiFetch('/api/drawer/reset', {
         method: 'POST',
-        body: JSON.stringify({ adminPassword: password }),
+        body: JSON.stringify({ confirmCode: password }),
       })
       setTodayDrawer(null)
       setResetModalOpen(false)
@@ -1070,17 +1070,17 @@ export default function CashDrawer({ isAdmin, backRoute, backLabel }) {
             </p>
 
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Enter Admin Password
+              Enter Confirmation Code
             </label>
             <PasswordInput
-              placeholder="Admin password"
+              placeholder="Enter 123 to confirm"
               value={resetPassword}
               onChange={e => { setResetPassword(e.target.value); setResetPasswordError(false) }}
               onKeyDown={e => e.key === 'Enter' && !resetSubmitting && handleReset(resetPassword)}
               className="w-full bg-gray-100 rounded-lg px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-gray-300"
             />
             {resetPasswordError && (
-              <p className="text-red-500 text-xs mt-1">Incorrect password. Try again.</p>
+              <p className="text-red-500 text-xs mt-1">Incorrect. Try again.</p>
             )}
 
             <div className="flex gap-3 mt-5">
