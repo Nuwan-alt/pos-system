@@ -6,7 +6,7 @@ import { getEffectivePrice } from '../../utils/pricing'
 import { generateMimicBarcode } from '../../utils/barcode'
 import PasswordInput from '../../components/PasswordInput'
 
-const EMPTY_FORM = { name: '', price: '', discountAmount: '0', minThreshold: '', barcode: '' }
+const EMPTY_FORM = { name: '', price: '', discountAmount: '', minThreshold: '', barcode: '' }
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
@@ -466,6 +466,7 @@ export default function ManageInventory() {
               <label className="block text-sm font-medium text-gray-700 mb-1">Minimum Stock Threshold</label>
               <input type="number" min="0" placeholder="0" value={form.minThreshold}
                 onChange={e => patch({ minThreshold: e.target.value })}
+                onWheel={e => e.target.blur()}
                 className="w-full bg-gray-100 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-gray-300 no-spinner" />
               <p className="text-xs text-gray-400 mt-1">Items below this quantity will be flagged as low stock</p>
             </div>
