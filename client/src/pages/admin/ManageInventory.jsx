@@ -538,7 +538,7 @@ export default function ManageInventory() {
               </div>
             </div>
 
-            <div className="grid grid-cols-[36px_2fr_1fr_1fr_1fr_1fr_1fr_120px] gap-3 px-5 py-2 text-xs font-semibold text-gray-500 shrink-0 border-b border-gray-100">
+            <div className="grid grid-cols-[36px_2.5fr_1fr_1fr_1fr_1fr_0.5fr_120px] gap-3 px-5 py-2 text-xs font-semibold text-gray-500 shrink-0 border-b border-gray-100">
               <span></span>
               <span>Product Name</span>
               <span>Buying Price</span>
@@ -576,7 +576,7 @@ export default function ManageInventory() {
                   const fp        = getEffectivePrice(product.price, product.discountAmount).toFixed(2)
                   return (
                     <div key={product.id}
-                      className={`grid grid-cols-[36px_2fr_1fr_1fr_1fr_1fr_1fr_120px] gap-3 px-5 py-3 items-center border-b border-gray-50 text-sm ${
+                      className={`grid grid-cols-[36px_2.5fr_1fr_1fr_1fr_1fr_0.5fr_120px] gap-3 px-5 py-3 items-center border-b border-gray-50 text-sm ${
                         isEditing ? 'bg-gray-100' : isLow ? 'bg-[#fff5f5]' : 'bg-white'
                       }`}>
                       <InventoryThumbnail product={product} />
