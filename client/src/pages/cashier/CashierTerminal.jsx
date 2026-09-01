@@ -130,13 +130,14 @@ export default function CashierTerminal() {
 
   const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0)
   const hasStockIssue = cart.some(item => item.qty > item.stock)
+  const hasZeroQtyIssue = cart.some(item => item.qty === 0)
 
   const change = amountGiven !== '' && parseFloat(amountGiven) >= total
     ? parseFloat(amountGiven) - total
     : null
   const isShortfall = amountGiven !== '' && parseFloat(amountGiven) < total
 
-  const canComplete = cart.length > 0 && selectedCashier !== '' && !hasStockIssue && !isShortfall
+  const canComplete = cart.length > 0 && selectedCashier !== '' && !hasStockIssue && !isShortfall && !hasZeroQtyIssue
 
   function getQuickAmounts(cartTotal) {
     const amounts = []
@@ -169,9 +170,21 @@ export default function CashierTerminal() {
     })
   }
 
+  // Barcode scan: add with qty 0 so the cashier must explicitly enter how many
+  // units are being sold, instead of silently assuming 1 per scan.
+  function addToCartByBarcode(product) {
+    if (product.stock === 0) return
+    const effectivePrice = getEffectivePrice(product.price, product.discountAmount)
+    setCart(prev => {
+      const existing = prev.find(item => item.id === product.id)
+      if (existing) return prev
+      return [...prev, { ...product, price: effectivePrice, qty: 0 }]
+    })
+  }
+
   // +/- buttons and arrow keys: commit immediately, clear any pending typed value
   function adjustQty(id, newQty) {
-    const clamped = Math.max(1, newQty)
+    const clamped = Math.max(0, newQty)
     setCart(prev => prev.map(item => item.id === id ? { ...item, qty: clamped } : item))
     setQtyInputs(prev => { const { [id]: _, ...rest } = prev; return rest })
   }
@@ -186,7 +199,7 @@ export default function CashierTerminal() {
     const raw = qtyInputs[id]
     if (raw === undefined) return
     const n = parseInt(raw, 10)
-    const final = (!isNaN(n) && n >= 1) ? n : currentQty
+    const final = (!isNaN(n) && n >= 0) ? n : currentQty
     setCart(prev => prev.map(item => item.id === id ? { ...item, qty: final } : item))
     setQtyInputs(prev => { const { [id]: _, ...rest } = prev; return rest })
   }
@@ -196,7 +209,12 @@ export default function CashierTerminal() {
   }
 
   async function completeTransaction() {
-    if (!canComplete || completing) return
+    if (completing) return
+    if (hasZeroQtyIssue) {
+      alert('One or more scanned items have a quantity of 0. Enter a quantity before completing the sale.')
+      return
+    }
+    if (!canComplete) return
     setCompleting(true)
     try {
       const result = await apiFetch('/api/transactions', {
@@ -319,7 +337,7 @@ export default function CashierTerminal() {
                     if (e.key !== 'Enter') return
                     const match = products.find(p => p.barcode && p.barcode === search.trim())
                     if (match) {
-                      addToCart(match)
+                      addToCartByBarcode(match)
                       setSearch('')
                       e.preventDefault()
                     }
@@ -543,9 +561,10 @@ export default function CashierTerminal() {
               <div>
                 {cart.map((item, index) => {
                   const overStock = item.qty > item.stock
+                  const zeroQty = item.qty === 0
                   return (
                   <div key={item.id}>
-                    <div className={`flex items-center gap-2 py-2.5 px-2 rounded-lg ${overStock ? 'bg-red-50' : ''}`}>
+                    <div className={`flex items-center gap-2 py-2.5 px-2 rounded-lg ${overStock || zeroQty ? 'bg-red-50' : ''}`}>
 
                       {/* Product name + unit price */}
                       <div className="flex-1 min-w-0">
@@ -556,21 +575,27 @@ export default function CashierTerminal() {
                             Only {item.stock} available
                           </p>
                         )}
+                        {zeroQty && (
+                          <p className="text-xs text-red-500 font-medium mt-0.5">
+                            Enter a quantity
+                          </p>
+                        )}
                       </div>
 
                       {/* Quantity adjuster */}
                       <div className="flex items-center gap-1 shrink-0">
                         <button
                           onClick={() => adjustQty(item.id, item.qty - 1)}
-                          disabled={item.qty <= 1}
+                          disabled={item.qty <= 0}
                           className="w-6 h-6 flex items-center justify-center rounded bg-gray-100 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed text-gray-700 text-base leading-none font-bold"
                         >
                           −
                         </button>
                         <input
                           type="number"
-                          min={1}
-                          value={item.id in qtyInputs ? qtyInputs[item.id] : item.qty}
+                          min={0}
+                          value={item.id in qtyInputs ? qtyInputs[item.id] : (item.qty === 0 ? '' : item.qty)}
+                          placeholder="0"
                           onChange={e => handleQtyInput(item.id, e.target.value)}
                           onBlur={() => commitQtyInput(item.id, item.qty)}
                           onKeyDown={e => {
@@ -702,6 +727,14 @@ export default function CashierTerminal() {
                   </div>
                 )}
               </>
+            )}
+
+            {/* Zero-quantity warning */}
+            {hasZeroQtyIssue && (
+              <div style={{ marginTop: '6px', padding: '7px 12px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#dc2626', fontWeight: '500' }}>
+                <AlertCircle size={14} />
+                Enter a quantity for all scanned items before completing the sale
+              </div>
             )}
 
             {/* Complete Transaction button */}
