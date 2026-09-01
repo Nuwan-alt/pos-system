@@ -8,6 +8,11 @@ import highlandLogo from '../../images/highland.png'
 import TransactionCompleteModal from '../../components/TransactionCompleteModal'
 import { printBill } from '../../utils/printBill'
 
+// Cashiers work one-per-day on this terminal, so the chosen cashier is
+// persisted across transactions (and page reloads) instead of being reset
+// after every sale — see handleSelectCashier / handleCloseTransaction below.
+const SELECTED_CASHIER_KEY = 'pos_selected_cashier'
+
 // Square product thumbnail with a graceful fallback: no image, a failed
 // load, and "not scrolled into view yet" all render the same neutral
 // placeholder — never a broken-image icon, and the box's size never changes,
@@ -102,7 +107,7 @@ export default function CashierTerminal() {
   const [cart,            setCart]            = useState([])
   const [search,          setSearch]          = useState('')
   const [stockFilter,     setStockFilter]     = useState('all') // 'all' | 'low' | 'out'
-  const [selectedCashier, setSelectedCashier] = useState('')
+  const [selectedCashier, setSelectedCashier] = useState(() => localStorage.getItem(SELECTED_CASHIER_KEY) || '')
   const [qtyInputs,       setQtyInputs]       = useState({})
   const [completing,      setCompleting]      = useState(false)
   const [amountGiven,     setAmountGiven]     = useState('')
@@ -119,6 +124,21 @@ export default function CashierTerminal() {
     window.addEventListener('focus', refetchAll)
     return () => window.removeEventListener('focus', refetchAll)
   }, [])
+
+  // If the persisted cashier is no longer in the active list (disabled/removed),
+  // fall back to unselected instead of silently submitting sales under a stale id.
+  useEffect(() => {
+    if (cashiers.length === 0) return
+    if (selectedCashier && !cashiers.some(c => String(c.id) === String(selectedCashier))) {
+      handleSelectCashier('')
+    }
+  }, [cashiers])
+
+  function handleSelectCashier(id) {
+    setSelectedCashier(id)
+    if (id) localStorage.setItem(SELECTED_CASHIER_KEY, id)
+    else localStorage.removeItem(SELECTED_CASHIER_KEY)
+  }
 
   const filteredProducts = products
     .filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
@@ -262,7 +282,6 @@ export default function CashierTerminal() {
 
   function handleCloseTransaction() {
     setCart([])
-    setSelectedCashier('')
     setAmountGiven('')
     setShowTransactionModal(false)
     setCompletedTransaction(null)
@@ -285,6 +304,29 @@ export default function CashierTerminal() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <div
+            className="flex items-center gap-2"
+            style={{
+              padding: '6px 10px',
+              borderRadius: '8px',
+              border: selectedCashier ? '1px solid #e5e7eb' : '1px solid #fca5a5',
+              backgroundColor: selectedCashier ? '#f9fafb' : '#fef2f2',
+            }}
+          >
+            <User className="w-4 h-4 text-gray-600 shrink-0" />
+            <select
+              value={selectedCashier}
+              onChange={e => handleSelectCashier(e.target.value)}
+              className="bg-transparent outline-none text-sm font-semibold text-gray-900"
+              style={{ border: 'none', maxWidth: '140px' }}
+              title="Cashier"
+            >
+              <option value="">Select cashier…</option>
+              {cashiers.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
           <button
             onClick={() => navigate('/cashier/drawer')}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 transition-colors"
@@ -307,7 +349,7 @@ export default function CashierTerminal() {
             Transactions
           </button>
           <button
-            onClick={() => { logout(); navigate('/') }}
+            onClick={() => { localStorage.removeItem(SELECTED_CASHIER_KEY); logout(); navigate('/') }}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-red-500 hover:bg-red-600 transition-colors"
           >
             <LogOut className="w-4 h-4" />
@@ -541,7 +583,6 @@ export default function CashierTerminal() {
                 onClick={() => {
                   if (window.confirm('Clear all items from the cart?')) {
                     setCart([])
-                    setSelectedCashier('')
                   }
                 }}
                 className="text-xs text-red-500 hover:text-red-700 border border-red-400 hover:border-red-600 bg-red-50 hover:bg-red-100 font-medium px-3 py-1 rounded-lg transition-colors"
@@ -639,25 +680,6 @@ export default function CashierTerminal() {
 
           {/* ── Bottom section (never scrolls away) ─────────────── */}
           <div className="shrink-0 border-t border-gray-100 pt-3">
-
-            {/* Select Cashier */}
-            <div style={{ marginTop: '8px', marginBottom: '8px' }}>
-              <div className="flex items-center gap-2" style={{ marginBottom: '4px' }}>
-                <User className="w-4 h-4 text-gray-600" />
-                <span style={{ fontSize: '13px', fontWeight: '700', color: '#111827' }}>Select Cashier</span>
-              </div>
-              <select
-                value={selectedCashier}
-                onChange={e => setSelectedCashier(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-gray-200"
-                style={{ padding: '6px 10px', fontSize: '13px' }}
-              >
-                <option value="">-- Select Cashier --</option>
-                {cashiers.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
 
             {/* Total */}
             <div className="flex items-center justify-between" style={{ marginTop: '8px', marginBottom: '8px', fontSize: '14px' }}>
