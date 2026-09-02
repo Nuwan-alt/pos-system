@@ -53,6 +53,11 @@ export default function CashDrawer({ isAdmin, backRoute, backLabel }) {
   // "Expected Closing" (opening + sales) before the drawer is actually closed.
   // The server recomputes this itself at close time; this is preview-only.
   const [todaySales,     setTodaySales]     = useState(0)
+  // Set only when today has no drawer of its own AND a previous day's
+  // drawer was left open — the case POST /open blocks on. Lets admin close
+  // it directly instead of hitting a dead end.
+  const [staleOpenDrawer,   setStaleOpenDrawer]   = useState(null)
+  const [staleClosingNote,  setStaleClosingNote]  = useState('')
   const [historyRecords, setHistoryRecords] = useState([])
   const [cashiers,       setCashiers]       = useState([])
   const [loading,        setLoading]        = useState(true)
@@ -109,6 +114,7 @@ export default function CashDrawer({ isAdmin, backRoute, backLabel }) {
       const result = await apiFetch('/api/drawer/today')
       setTodayDrawer(result.data)
       setTodaySales(result.todaySales ?? 0)
+      setStaleOpenDrawer(result.staleOpenDrawer ?? null)
     } catch (err) {
       console.error('Failed to fetch today drawer:', err)
     } finally {
@@ -247,6 +253,34 @@ export default function CashDrawer({ isAdmin, backRoute, backLabel }) {
     }
   }
 
+  // Admin-only: close a previous day's drawer that was never closed, so a
+  // new drawer can be opened today. Reuses POST /drawer/close as-is — it
+  // already finds "whichever drawer is open" regardless of date; admin
+  // closing needs no cashier password, same as the normal close flow.
+  async function handleCloseStaleDrawer() {
+    setSubmitting(true)
+    setError(null)
+    try {
+      await apiFetch('/api/drawer/close', {
+        method: 'POST',
+        body: JSON.stringify({
+          note:           staleClosingNote || null,
+          closed_by_role: 'admin',
+          closed_by_id:   1,
+          closed_by_name: 'Admin',
+        }),
+      })
+      setStaleOpenDrawer(null)
+      setStaleClosingNote('')
+      fetchHistory()
+      fetchTodayDrawer()
+    } catch (err) {
+      showError(err.message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   function handleEditOpen(record) {
     setEditModal({ open: true, record })
     setEditForm({
@@ -337,7 +371,12 @@ export default function CashDrawer({ isAdmin, backRoute, backLabel }) {
 
   // ── Status badge ─────────────────────────────────────────────────────────────
 
-  const statusBadge = todayDrawer === null ? (
+  const statusBadge = todayDrawer === null && staleOpenDrawer ? (
+    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold border"
+      style={{ backgroundColor: '#fef2f2', borderColor: '#fecaca', color: '#dc2626' }}>
+      <AlertTriangle className="w-3.5 h-3.5" /> Previous Drawer Open
+    </span>
+  ) : todayDrawer === null ? (
     <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold border"
       style={{ backgroundColor: '#fefce8', borderColor: '#fde68a', color: '#d97706' }}>
       <AlertTriangle className="w-3.5 h-3.5" /> Not Started
@@ -525,8 +564,93 @@ export default function CashDrawer({ isAdmin, backRoute, backLabel }) {
             <div className="p-6">
               <div className="max-w-[700px] mx-auto space-y-5">
 
+                {/* STATE A-STALE — Not Started because a previous day's
+                    drawer was never closed. Admin can close it here; a
+                    cashier just sees why they can't open today's drawer. */}
+                {todayDrawer === null && staleOpenDrawer && (
+                  <div className="border rounded-xl p-6" style={{ backgroundColor: '#fef2f2', borderColor: '#fecaca' }}>
+                    <div className="flex items-center gap-3 mb-5">
+                      <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: '#fee2e2' }}>
+                        <AlertTriangle className="w-4 h-4" style={{ color: '#dc2626' }} />
+                      </div>
+                      <div>
+                        <p className="font-bold text-gray-900">Previous Drawer Still Open</p>
+                        <p className="text-sm text-gray-600">
+                          The drawer from{' '}
+                          {staleOpenDrawer.drawer_date
+                            ? new Date(staleOpenDrawer.drawer_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+                            : 'a previous day'}
+                          {' '}was never closed.{' '}
+                          {isAdmin
+                            ? "Close it below before opening today's drawer."
+                            : "Ask an admin to close it before opening today's drawer."}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 mb-5">
+                      <div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderLeft: '4px solid #3b82f6', borderRadius: '12px', padding: '16px' }}>
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <Lock size={14} color="#3b82f6" />
+                          <span className="text-xs font-semibold" style={{ color: '#3b82f6' }}>Opening</span>
+                        </div>
+                        <p className="text-lg font-bold text-gray-900 mb-1">
+                          {formatAmount(staleOpenDrawer.opening_amount)}
+                        </p>
+                        <p className="text-xs text-gray-400 flex items-center gap-1 mb-2">
+                          <Clock className="w-3 h-3" /> {formatTime(staleOpenDrawer.opening_time)}
+                        </p>
+                        <RoleBadge role={staleOpenDrawer.opened_by_role} name={staleOpenDrawer.opened_by_name} />
+                      </div>
+                      <div style={{ backgroundColor: '#f9fafb', border: '1px solid #e5e7eb', borderLeft: '4px solid #d1d5db', borderRadius: '12px', padding: '16px' }}>
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <TrendingUp size={14} color="#9ca3af" />
+                          <span className="text-xs font-semibold text-gray-500">Sales That Day</span>
+                        </div>
+                        <p className="text-lg font-bold text-gray-900">
+                          {formatAmount(staleOpenDrawer.today_sales)}
+                        </p>
+                      </div>
+                    </div>
+
+                    {isAdmin ? (
+                      <>
+                        <div className="mb-5">
+                          <label className="block text-sm font-bold text-gray-700 mb-1">
+                            Closing Note{' '}
+                            <span className="font-normal text-gray-400 italic">(optional)</span>
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Closed retroactively — left open overnight"
+                            value={staleClosingNote}
+                            onChange={e => setStaleClosingNote(e.target.value)}
+                            className="w-full rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-gray-300"
+                            style={{ backgroundColor: '#f3f4f6' }}
+                          />
+                        </div>
+
+                        {errorBanner}
+
+                        <button
+                          onClick={handleCloseStaleDrawer}
+                          disabled={submitting}
+                          className="w-full flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-bold text-white transition-colors"
+                          style={{ backgroundColor: submitting ? '#9ca3af' : '#dc2626' }}
+                        >
+                          {submitting ? (
+                            <><Loader2 className="w-4 h-4 animate-spin" /> Closing...</>
+                          ) : (
+                            <><Unlock className="w-4 h-4" /> Close Previous Drawer</>
+                          )}
+                        </button>
+                      </>
+                    ) : errorBanner}
+                  </div>
+                )}
+
                 {/* STATE A — Not Started */}
-                {todayDrawer === null && (
+                {todayDrawer === null && !staleOpenDrawer && (
                   <div className="border border-gray-200 rounded-xl p-6">
                     <div className="flex items-center gap-3 mb-6">
                       <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center shrink-0">

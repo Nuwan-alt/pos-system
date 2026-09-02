@@ -36,7 +36,28 @@ router.get('/today', async (req, res) => {
     // Included regardless of drawer status so the client can preview what
     // closing would produce before the drawer is actually closed.
     const todaySales = await getSalesTotal(today)
-    res.json({ success: true, data: rows.length > 0 ? rows[0] : null, todaySales })
+
+    // If nobody opened a drawer today, that may be because a *previous*
+    // day's drawer was never closed (e.g. everyone forgot before midnight)
+    // — POST /open blocks a new drawer in that case (see below), but until
+    // now there was no way for the client to discover *why*, since it only
+    // ever asked for today's row. Surface that stale drawer here so the
+    // client can offer a way to close it instead of showing a dead-end
+    // "Open Drawer" form.
+    let staleOpenDrawer = null
+    if (rows.length === 0) {
+      const [openRows] = await db.query(
+        `SELECT cd.*,
+           (SELECT COALESCE(SUM(t.total), 0) FROM transactions t
+            WHERE DATE(t.transaction_time) = cd.drawer_date AND t.is_deleted = 0) AS today_sales
+         FROM cash_drawer cd
+         WHERE cd.status = 'open'
+         LIMIT 1`
+      )
+      if (openRows.length > 0) staleOpenDrawer = openRows[0]
+    }
+
+    res.json({ success: true, data: rows.length > 0 ? rows[0] : null, todaySales, staleOpenDrawer })
   } catch (err) {
     console.error('GET /drawer/today error:', err)
     res.status(500).json({ error: "Failed to fetch today's drawer." })
