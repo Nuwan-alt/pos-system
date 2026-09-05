@@ -160,7 +160,7 @@ router.post('/', uploadSingleImage('image'), async (req, res) => {
       `INSERT INTO products
          (name, price, discount_amount, stock, min_threshold, barcode, thumbnail_blob, full_blob, image_mime, has_image, image_version)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [name.trim(), parsedPrice, parsedDiscountAmount, parseInt(stock), parseInt(minThreshold), trimmedBarcode,
+      [name.trim(), parsedPrice, parsedDiscountAmount, parseInt(stock) || 0, parseInt(minThreshold) || 0, trimmedBarcode,
        thumbnailBlob, fullBlob, imageMime, hasImage, imageVersion]
     )
 

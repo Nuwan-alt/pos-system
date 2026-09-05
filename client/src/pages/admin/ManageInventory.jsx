@@ -128,9 +128,10 @@ export default function ManageInventory() {
   function validate() {
     const price = parseFloat(form.price)
     const discountAmount = parseFloat(form.discountAmount) || 0
+    const minThreshold = parseFloat(form.minThreshold) || 0
     if (!form.name.trim())                                             { setFormError('Product name is required.'); return false }
     if (isNaN(price) || price <= 0)                                    { setFormError('Price must be greater than 0.'); return false }
-    if (parseFloat(form.minThreshold) < 0 || isNaN(parseFloat(form.minThreshold))) { setFormError('Threshold cannot be negative.'); return false }
+    if (minThreshold < 0)                                              { setFormError('Threshold cannot be negative.'); return false }
     if (isNaN(discountAmount) || discountAmount < 0)                   { setFormError('Discount amount must be 0 or greater.'); return false }
     if (discountAmount >= price)                                       { setFormError('Discount amount must be less than the price.'); return false }
     return true
@@ -538,7 +539,7 @@ export default function ManageInventory() {
               </div>
             </div>
 
-            <div className="grid grid-cols-[36px_2.5fr_1fr_1fr_1fr_1fr_0.5fr_120px] gap-3 px-5 py-2 text-xs font-semibold text-gray-500 shrink-0 border-b border-gray-100">
+            <div className="grid grid-cols-[36px_3fr_0.9fr_0.9fr_0.9fr_0.9fr_0.5fr_120px] gap-3 px-5 py-2 text-xs font-bold text-black bg-gray-200 shrink-0 border-b border-gray-100">
               <span></span>
               <span>Product Name</span>
               <span>Buying Price</span>
@@ -576,7 +577,7 @@ export default function ManageInventory() {
                   const fp        = getEffectivePrice(product.price, product.discountAmount).toFixed(2)
                   return (
                     <div key={product.id}
-                      className={`grid grid-cols-[36px_2.5fr_1fr_1fr_1fr_1fr_0.5fr_120px] gap-3 px-5 py-3 items-center border-b border-gray-50 text-sm ${
+                      className={`grid grid-cols-[36px_3fr_0.9fr_0.9fr_0.9fr_0.9fr_0.5fr_120px] gap-3 px-5 py-3 items-center border-b border-gray-50 text-sm ${
                         isEditing ? 'bg-gray-100' : isLow ? 'bg-[#fff5f5]' : 'bg-white'
                       }`}>
                       <InventoryThumbnail product={product} />
@@ -602,21 +603,21 @@ export default function ManageInventory() {
                           </button>
                         )}
                         <button onClick={() => openStockModal(product)}
-                          className="p-1.5 rounded-lg border border-gray-200 bg-white text-gray-400 hover:bg-green-600 hover:border-green-600 hover:text-white transition-colors"
+                          className="px-2 py-1.5 rounded-lg border-2 border-blue-300 bg-blue-100 text-blue-600 hover:bg-blue-700 hover:border-blue-700 hover:text-white transition-colors text-xs font-semibold"
                           title="Update stock">
-                          <PackagePlus className="w-3.5 h-3.5" />
+                          GNR
                         </button>
                         <button onClick={() => startEdit(product)}
-                          className={`p-1.5 rounded-lg border transition-colors ${
+                          className={`p-1.5 rounded-lg border-2 transition-colors ${
                             isEditing
                               ? 'bg-gray-900 border-gray-900 text-white'
-                              : 'bg-white border-gray-200 text-gray-500 hover:bg-blue-700 hover:border-blue-700 hover:text-white'
+                              : 'bg-white border-gray-300 text-gray-500 hover:bg-green-600 hover:border-green-600 hover:text-white'
                           }`}
                           title="Edit product">
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
                         <button onClick={() => openDelete(product)}
-                          className="p-1.5 rounded-lg border border-gray-200 bg-white text-gray-400 hover:bg-red-500 hover:border-red-500 hover:text-white transition-colors"
+                          className="p-1.5 rounded-lg border-2 border-gray-300 bg-white text-gray-400 hover:bg-red-500 hover:border-red-500 hover:text-white transition-colors"
                           title="Delete product">
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
