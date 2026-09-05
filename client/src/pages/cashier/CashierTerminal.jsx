@@ -176,17 +176,16 @@ export default function CashierTerminal() {
   const lowStockCount   = products.filter(p => p.stock > 0 && p.stock < p.minThreshold).length
   const outOfStockCount = products.filter(p => p.stock === 0).length
 
+  // Clicking a product card: add with qty 0 (renders empty) so the cashier
+  // must explicitly type how many units are being sold, same as a barcode
+  // scan — see addToCartByBarcode below.
   function addToCart(product) {
     if (product.stock === 0) return
     const effectivePrice = getEffectivePrice(product.price, product.discountAmount)
     setCart(prev => {
       const existing = prev.find(item => item.id === product.id)
-      if (existing) {
-        return prev.map(item =>
-          item.id === product.id ? { ...item, qty: item.qty + 1 } : item
-        )
-      }
-      return [...prev, { ...product, price: effectivePrice, qty: 1 }]
+      if (existing) return prev
+      return [...prev, { ...product, price: effectivePrice, qty: 0 }]
     })
   }
 
@@ -600,8 +599,15 @@ export default function CashierTerminal() {
             ) : (
               <div>
                 {cart.map((item, index) => {
-                  const overStock = item.qty > item.stock
-                  const zeroQty = item.qty === 0
+                  // While the cashier is typing a quantity, reflect the pending
+                  // (uncommitted) value here too, so the "Enter a quantity" /
+                  // over-stock messaging updates live instead of waiting for
+                  // blur/Enter to commit it into cart state.
+                  const pendingRaw = qtyInputs[item.id]
+                  const pendingQty = pendingRaw !== undefined ? parseInt(pendingRaw, 10) : null
+                  const displayQty = pendingQty !== null && !isNaN(pendingQty) ? pendingQty : item.qty
+                  const overStock = displayQty > item.stock
+                  const zeroQty = displayQty === 0
                   return (
                   <div key={item.id}>
                     <div className={`flex items-center gap-2 py-2.5 px-2 rounded-lg ${overStock || zeroQty ? 'bg-red-50' : ''}`}>
